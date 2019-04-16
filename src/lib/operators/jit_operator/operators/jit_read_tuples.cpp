@@ -4,6 +4,7 @@
 #include "all_type_variant.hpp"
 #include "expression/evaluation/expression_evaluator.hpp"
 #include "jit_expression.hpp"
+#include "lossless_cast.hpp"
 #include "resolve_type.hpp"
 #include "storage/segment_iterables/create_iterable_from_attribute_vector.hpp"
 #include "storage/segment_iterate.hpp"
@@ -49,25 +50,102 @@ AttributeIterableData get_attribute_iterable_data(const std::shared_ptr<const Ba
 
 ValueID get_search_value_id(const JitExpressionType expression_type,
                             const std::shared_ptr<const BaseDictionarySegment>& dict_segment,
-                            const AllTypeVariant& value) {
+                            const AllTypeVariant& variant) {
+  // Convert the variant to the column data type
+  const auto column_data_type = dict_segment->data_type();
+  const auto variant_data_type = data_type_from_all_type_variant(variant);
+  AllTypeVariant casted_variant;
+  if (const auto result = lossless_variant_cast(variant, column_data_type)) {
+    casted_variant = *result;
+  } else {
+    // A non-existing value cannot match an existing value
+    if (expression_type == JitExpressionType::Equals || expression_type == JitExpressionType::NotEquals) {
+      return INVALID_VALUE_ID;
+    }
+
+    bool below_value_range{false};
+    bool above_value_range{false};
+
+    resolve_data_type(variant_data_type, [&](auto variant_data_type_t) {
+      using VariantDataType = typename decltype(variant_data_type_t)::type;
+      if constexpr (std::is_same_v<VariantDataType, pmr_string>) {
+        Fail("Cannot compare string type with non-string type");
+      } else {
+        resolve_data_type(column_data_type, [&](auto column_data_type_t) {
+          using ColumnDataType = typename decltype(column_data_type_t)::type;
+
+          if constexpr (std::is_same_v<ColumnDataType, pmr_string> || std::is_same_v<VariantDataType, pmr_string>) {
+            Fail("Cannot compare string type with non-string type");
+          } else {
+            const auto extracted_value = boost::get<VariantDataType>(variant);
+
+            // Check if value is out of range
+            if (extracted_value < std::numeric_limits<ColumnDataType>::min()) below_value_range = true;
+            if (extracted_value > std::numeric_limits<ColumnDataType>::max()) above_value_range = true;
+
+            const auto casted_value = static_cast<ColumnDataType>(extracted_value);
+            switch (expression_type) {
+              case JitExpressionType::LessThan:
+              case JitExpressionType::GreaterThanEquals:
+                // Round up to nearest representable instance
+                if (casted_value > extracted_value) {
+                  casted_variant = casted_value;
+                } else {
+                  if constexpr (std::is_same_v<ColumnDataType, float>) {  // int, long, double -> float
+                    casted_variant = nextafterf(casted_value, std::numeric_limits<ColumnDataType>::max());
+                  } else if constexpr (std::is_same_v<ColumnDataType, double>) {  // ing, long -> double
+                    casted_variant = nextafter(casted_value, std::numeric_limits<ColumnDataType>::max());
+                  } else { // float, double -> int, long
+                    casted_variant = static_cast<ColumnDataType>(std::ceil(extracted_value));
+                  }
+                }
+                break;
+              case JitExpressionType::LessThanEquals:
+              case JitExpressionType::GreaterThan:
+                // Round down to nearest representable instance
+                if (casted_value < extracted_value) {
+                  casted_variant = casted_value;
+                } else {
+                  if constexpr (std::is_same_v <ColumnDataType, float>) {  // int, long, double -> float
+                    casted_variant = nextafterf(casted_value, std::numeric_limits<ColumnDataType>::min());
+                  } else if constexpr (std::is_same_v<ColumnDataType, double>) {  // ing, long -> double
+                    casted_variant = nextafter(casted_value, std::numeric_limits<ColumnDataType>::min());
+                  } else { // float, double -> int, long
+                    casted_variant = static_cast<ColumnDataType>(std::floor(extracted_value));
+                  }
+                }
+                break;
+              default:  // Equals and NotEquals have already been handled
+                break;
+            }
+          }
+        });
+      }
+    });
+
+    // Return smallest or largest value id, if the value is out of the value range of the column data type
+    if (below_value_range) return ValueID{0};
+    if (above_value_range) return INVALID_VALUE_ID;
+  }
+
   // Lookup the value id according to the comparison operator
   // See operators/table_scan/column_vs_value_table_scan_impl.cpp for details
   switch (expression_type) {
     case JitExpressionType::Equals:
     case JitExpressionType::NotEquals: {
-      const auto value_id = dict_segment->lower_bound(value);
+      const auto value_id = dict_segment->lower_bound(casted_variant);
       // Check if value exists in dictionary
-      if (value_id < dict_segment->unique_values_count() && dict_segment->value_of_value_id(value_id) != value) {
+      if (value_id < dict_segment->unique_values_count() && dict_segment->value_of_value_id(value_id) != casted_variant) {
         return INVALID_VALUE_ID;
       }
       return value_id;
     }
     case JitExpressionType::LessThan:
     case JitExpressionType::GreaterThanEquals:
-      return dict_segment->lower_bound(value);
+      return dict_segment->lower_bound(casted_variant);
     case JitExpressionType::LessThanEquals:
     case JitExpressionType::GreaterThan:
-      return dict_segment->upper_bound(value);
+      return dict_segment->upper_bound(casted_variant);
     default:
       Fail("Unsupported expression type for binary value id predicate");
   }
@@ -255,25 +333,8 @@ bool JitReadTuples::before_chunk(const Table& in_table, const ChunkID chunk_id,
         // Null values are set in before_query() function
         if (variant_is_null(value)) continue;
 
-        // Convert the value to the column data type
-        AllTypeVariant casted_value;
-        resolve_data_type(jit_input_column.tuple_entry.data_type, [&](const auto column_data_type_t) {
-          using ColumnDataType = typename decltype(column_data_type_t)::type;
-
-          resolve_data_type(data_type_from_all_type_variant(value), [&](const auto value_data_type_t) {
-            using ValueDataType = typename decltype(value_data_type_t)::type;
-
-            if constexpr (std::is_same_v<ColumnDataType, pmr_string> == std::is_same_v<ValueDataType, pmr_string>) {
-              casted_value = static_cast<ColumnDataType>(boost::get<ValueDataType>(value));
-            } else {
-              Fail("Cannot compare string type with non-string type");
-            }
-          });
-
-        });
-
         // Lookup the value id according to the comparison operator
-        const auto value_id = get_search_value_id(expression_type, dict_segment, casted_value);
+        const ValueID value_id = get_search_value_id(expression_type, dict_segment, value);
         context.tuple.set<ValueID>(tuple_index, value_id);
       }
     } else {

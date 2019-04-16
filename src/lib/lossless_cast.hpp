@@ -75,7 +75,7 @@ std::enable_if_t<std::is_same_v<pmr_string, Source> && std::is_integral_v<Target
   errno = 0;
   char* end;
 
-  const auto integral = std::strtol(source.c_str(), &end, 10);
+  const int64_t integral = std::strtol(source.c_str(), &end, 10);
 
   if (errno == 0 && end == source.data() + source.size()) {
     return lossless_cast<Target>(integral);
