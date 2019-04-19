@@ -30,8 +30,10 @@ namespace opossum {
  */
 class JitCompiler {
  protected:
-  using ObjectLayer = llvm::orc::RTDyldObjectLinkingLayer;
-  using CompileLayer = llvm::orc::IRCompileLayer<ObjectLayer, llvm::orc::SimpleCompiler>;
+  using ObjectLayer = llvm::orc::LegacyRTDyldObjectLinkingLayer;
+  using CompileLayer = llvm::orc::LegacyIRCompileLayer<ObjectLayer, llvm::orc::SimpleCompiler>;
+  using OptimizeFunction = std::function<std::unique_ptr<llvm::Module>(std::unique_ptr<llvm::Module>)>;
+  using OptimizeLayer = llvm::orc::LegacyIRTransformLayer<CompileLayer, OptimizeFunction>;
 
  public:
   JitCompiler();
@@ -79,7 +81,8 @@ class JitCompiler {
   std::shared_ptr<llvm::orc::SymbolResolver> _resolver;
   ObjectLayer _object_layer;
   CompileLayer _compile_layer;
-  llvm::orc::LocalCXXRuntimeOverrides _cxx_runtime_overrides;
+  llvm::orc::LegacyLocalCXXRuntimeOverrides _cxx_runtime_overrides;
+  OptimizeLayer _optimize_layer;
   std::vector<llvm::orc::VModuleKey> _modules;
 };
 

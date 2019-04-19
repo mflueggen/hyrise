@@ -17,6 +17,10 @@ JitCompiler::JitCompiler()
             // the running process.
             if (auto compile_layer_symbol = _compile_layer.findSymbol(name, true)) {
               return compile_layer_symbol;
+            /*
+            } else if (auto Sym = _optimize_layer.findSymbol(name, false)) {
+              return Sym;
+            */
             } else if (auto runtime_override_symbol = _cxx_runtime_overrides.searchOverrides(name)) {
               return runtime_override_symbol;
             } else {
@@ -27,11 +31,15 @@ JitCompiler::JitCompiler()
           [](llvm::Error error) { _handle_error(std::move(error)); })},
       _object_layer{_execution_session,
                     [&](llvm::orc::VModuleKey module_key) {
-                      return llvm::orc::RTDyldObjectLinkingLayer::Resources{
+                      return llvm::orc::LegacyRTDyldObjectLinkingLayer::Resources{
                           std::make_shared<llvm::SectionMemoryManager>(), _resolver};
                     }},
       _compile_layer{_object_layer, llvm::orc::SimpleCompiler(*_target_machine)},
-      _cxx_runtime_overrides{[this](const std::string& symbol) { return _mangle(symbol); }} {
+      _cxx_runtime_overrides{[this](const std::string& symbol) { return _mangle(symbol); }},
+      _optimize_layer(_compile_layer,
+                    [](std::unique_ptr<llvm::Module> M) {
+                      return M;
+                    }) {
   // Make exported symbols of the current process available to the JIT
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
