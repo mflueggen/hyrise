@@ -14,7 +14,7 @@ std::string JitFilter::description() const { return "[Filter] on x = " + express
 
 void JitFilter::_consume(JitRuntimeContext& context) const {
   const auto result = expression->compute<bool>(context);
-  if ((!expression->result_entry->is_nullable || result) && result.value()) {
+  if ((!expression->_result_entry.is_nullable || result) && result.value()) {
     _emit(context);
   }
 }

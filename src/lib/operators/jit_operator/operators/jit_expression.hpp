@@ -83,6 +83,7 @@ class JitExpression {
   const std::shared_ptr<JitExpression> right_child;
   const JitExpressionType expression_type;
   const std::shared_ptr<JitTupleEntry> result_entry;
+  JitTupleEntry _result_entry;
   bool use_value_ids = false;
 
  private:
