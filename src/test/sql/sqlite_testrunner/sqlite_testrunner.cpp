@@ -152,6 +152,9 @@ TEST_P(SQLiteTestRunner, CompareToSQLite) {
 
   SCOPED_TRACE("Query '" + sql + "'" + (use_jit ? " with JIT" : " without JIT") + " and encoding " +
                encoding_type_to_string.left.at(encoding_type));
+  std::cout << "Query '" + sql + "'" + (use_jit ? " with JIT" : " without JIT") + " and encoding " +
+                   encoding_type_to_string.left.at(encoding_type)
+            << std::endl;
 
   std::shared_ptr<LQPTranslator> lqp_translator;
   if (use_jit) {
