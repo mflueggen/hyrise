@@ -15,9 +15,6 @@ if echo $REPLY | grep -E '^[Yy]$' > /dev/null; then
             exit 1
         fi
 
-        # Needed for proper building under macOS
-        xcode-select --install
-
         brew --version 2>/dev/null || /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 
         echo "Installing dependencies (this may take a while)..."
@@ -36,7 +33,7 @@ if echo $REPLY | grep -E '^[Yy]$' > /dev/null; then
                 fi
             done
 
-            if ! brew install llvm --with-toolchain; then
+            if ! brew install llvm; then
                 echo "Error during llvm/clang installation."
                 exit 1
             fi
@@ -54,7 +51,7 @@ if echo $REPLY | grep -E '^[Yy]$' > /dev/null; then
             echo "Installing dependencies (this may take a while)..."
             if sudo apt-get update >/dev/null; then
                 boostall=$(apt-cache search --names-only '^libboost1.[0-9]+-all-dev$' | sort | tail -n 1 | cut -f1 -d' ')
-                sudo apt-get install --no-install-recommends -y clang-8 libclang-8-dev clang-tidy-8 clang-format-8 gcovr python2.7 gcc-8 g++-8 llvm llvm-8-tools libnuma-dev libnuma1 libtbb-dev cmake libreadline-dev libncurses5-dev libsqlite3-dev parallel $boostall libpq-dev systemtap systemtap-sdt-dev autoconf &
+                sudo apt-get install --no-install-recommends -y clang-8 libclang-8-dev clang-tidy-8 clang-format-8 gcovr python2.7 python-pexpect gcc-8 g++-8 llvm llvm-8-tools libnuma-dev libnuma1 libtbb-dev cmake libreadline-dev libncurses5-dev libsqlite3-dev parallel $boostall libpq-dev systemtap systemtap-sdt-dev autoconf &
 
                 if ! git submodule update --jobs 5 --init --recursive; then
                     echo "Error during installation."

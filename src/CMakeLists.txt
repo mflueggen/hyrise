@@ -14,6 +14,7 @@ if (APPLE)
 else()
     option(ENABLE_JIT_SUPPORT "Build with JIT support" ON)
 endif()
+
 if (NOT ${LLVM_FOUND} OR NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8 OR NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
     set(ENABLE_JIT_SUPPORT OFF)
 elseif (APPLE AND ENABLE_JIT_SUPPORT)
@@ -26,6 +27,12 @@ if (${ENABLE_JIT_SUPPORT})
 else()
     add_definitions(-DHYRISE_JIT_SUPPORT=0)
     MESSAGE(STATUS "Building without JIT support")
+
+    # If we are building Hyrise for the CI server, we want to make sure that all optional features are available and can be tested
+    if(DEFINED CI_BUILD AND "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+        message(FATAL_ERROR "-DCI_BUILD=ON was set, but LLVM was not found.")
+    endif()
+
 endif()
 
 # Provide ENABLE_NUMA_SUPPORT option and automatically disable NUMA if libNUMA was not found
@@ -62,7 +69,7 @@ endif()
 # Global flags and include directories
 # When generating a dtrace header file, symbols containing dollar-signs are created This file needs to be compiled as well.
 # Hence, the `-Wno-dollar-in-identifier-extension` flag is required.
-add_compile_options(-std=c++17 -pthread -Wall -Wextra -pedantic -Wno-unused-parameter -Wno-dollar-in-identifier-extension -Wno-unknown-pragmas)
+add_compile_options(-std=c++17 -pthread -Wall -Wextra -pedantic -Werror -Wno-unused-parameter -Wno-dollar-in-identifier-extension -Wno-unknown-pragmas)
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     add_compile_options(-Weverything -Wshadow-all -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-documentation -Wno-padded -Wno-global-constructors -Wno-sign-conversion -Wno-exit-time-destructors -Wno-shadow-field-in-constructor -Wno-switch-enum -Wno-weak-vtables -Wno-double-promotion -Wno-covered-switch-default -Wno-unused-macros -Wno-newline-eof -Wno-missing-variable-declarations -Wno-weak-template-vtables -Wno-missing-prototypes -Wno-float-equal -Wno-return-std-move-in-c++11 -Wno-unreachable-code-break -Wno-undefined-func-template -Wno-unknown-warning-option -Wno-pass-failed)
