@@ -1,6 +1,7 @@
 #include "jit_read_tuples.hpp"
 
 #include "../jit_types.hpp"
+#include "jit_segment_reader.hpp"
 #include "all_type_variant.hpp"
 #include "expression/evaluation/expression_evaluator.hpp"
 #include "jit_expression.hpp"
@@ -93,6 +94,65 @@ std::string JitReadTuples::description() const {
   return desc.str();
 }
 
+void JitReadTuples::_create_jit_readers(const Chunk& in_chunk, const std::vector<bool>& segments_are_dictionaries, std::vector<JitReaderContainer>& jit_readers) {
+  jit_readers.clear();
+
+  // Create the segment iterator for each input segment and store them to the runtime context
+  for (size_t input_column_index{0}; input_column_index < _input_columns.size(); ++input_column_index) {
+    const auto& input_column = _input_columns[input_column_index];
+    const auto column_id = input_column.column_id;
+    const auto segment = in_chunk.get_segment(column_id);
+    const auto is_nullable = !input_column.tuple_entry.guaranteed_non_null;
+
+    JitReaderContainer readers;
+
+    if (segments_are_dictionaries[input_column_index]) {
+      // We need the value ids from a dictionary segment
+      const auto [dict_segment, pos_list] = get_attribute_iterable_data(segment);
+      DebugAssert(dict_segment, "Segment is not a dictionary or a reference segment referencing a dictionary");
+
+      const auto add_value_id_reader = [&](auto it) {
+        using IteratorType = decltype(it);
+        if (is_nullable) {
+          readers.value_id_reader = std::make_shared<JitSegmentReader<IteratorType, ValueID, true>>(
+                  it, input_column.tuple_entry.tuple_index);
+        } else {
+          readers.value_id_reader = std::make_shared<JitSegmentReader<IteratorType, ValueID, false>>(
+                  it, input_column.tuple_entry.tuple_index);
+        }
+      };
+
+      if (pos_list) {
+        create_iterable_from_attribute_vector(*dict_segment).with_iterators(pos_list, [&](auto it, auto end) {
+          add_value_id_reader(it);
+        });
+      } else {
+        create_iterable_from_attribute_vector(*dict_segment).with_iterators([&](auto it, auto end) {
+          add_value_id_reader(it);
+        });
+      }
+    }
+
+    // A query can require both value ids (for predicates) and actual values (for math operations) of a column
+    if (input_column.use_actual_value || !segments_are_dictionaries[input_column_index]) {
+      // We need the actual values of a segment
+      segment_with_iterators(*segment, [&](auto it, const auto end) {
+        using IteratorType = decltype(it);
+        using Type = typename IteratorType::ValueType;
+        if (is_nullable) {
+          readers.real_value_reader = std::make_shared<JitSegmentReader<IteratorType, Type, true>>(
+                  it, input_column.tuple_entry.tuple_index);
+        } else {
+          readers.real_value_reader = std::make_shared<JitSegmentReader<IteratorType, Type, false>>(
+                  it, input_column.tuple_entry.tuple_index);
+        }
+      });
+    }
+
+    jit_readers.push_back(readers);
+  }
+}
+
 void JitReadTuples::before_specialization(const Table& in_table, std::vector<bool>& tuple_non_nullable_information) {
   // Update the nullable information in the JitExpressions accessing input table values
   tuple_non_nullable_information.resize(_num_tuple_values);
@@ -124,9 +184,21 @@ void JitReadTuples::before_specialization(const Table& in_table, std::vector<boo
                      }),
       _value_id_expressions.end());
 
+  std::vector<bool> segments_are_dictionaries(_input_columns.size(), false);
   // Update the remaining value id expressions
   for (const auto& value_id_expression : _value_id_expressions) {
     value_id_expression.jit_expression->use_value_ids = true;
+    segments_are_dictionaries[value_id_expression.input_column_index] = true;
+  }
+
+  // Create input wrapper
+  std::vector<JitReaderContainer> readers;
+  _create_jit_readers(chunk, segments_are_dictionaries, readers);
+  _input_wrappers.resize(readers.size());
+  for (size_t i = 0; i < readers.size(); ++i) {
+    auto& segment_readers = readers[i];
+    _input_wrappers[i].first = segment_readers.real_value_reader ? segment_readers.real_value_reader->create_wrapper(i) : nullptr;
+    _input_wrappers[i].second = segment_readers.value_id_reader ? segment_readers.value_id_reader->create_wrapper(i) : nullptr;
   }
 }
 
@@ -191,7 +263,6 @@ bool JitReadTuples::before_chunk(const Table& in_table, const ChunkID chunk_id,
                                  const std::vector<AllTypeVariant>& parameter_values, JitRuntimeContext& context) {
   const auto& in_chunk = *in_table.get_chunk(chunk_id);
 
-  context.inputs.clear();
   context.chunk_offset = 0;
   context.chunk_size = in_chunk.size();
   context.chunk_id = chunk_id;
@@ -219,18 +290,6 @@ bool JitReadTuples::before_chunk(const Table& in_table, const ChunkID chunk_id,
       context.pos_list = ref_col_in->pos_list();
     }
   }
-
-  const auto add_iterator = [&](auto it, auto type, const JitInputColumn& input_column, const bool is_nullable) {
-    using IteratorType = decltype(it);
-    using Type = decltype(type);
-    if (is_nullable) {
-      context.inputs.push_back(std::make_shared<JitReadTuples::JitSegmentReader<IteratorType, Type, true>>(
-          it, input_column.tuple_entry.tuple_index));
-    } else {
-      context.inputs.push_back(std::make_shared<JitReadTuples::JitSegmentReader<IteratorType, Type, false>>(
-          it, input_column.tuple_entry.tuple_index));
-    }
-  };
 
   bool use_specialization = true;
 
@@ -297,44 +356,30 @@ bool JitReadTuples::before_chunk(const Table& in_table, const ChunkID chunk_id,
   }
 
   // Create the segment iterator for each input segment and store them to the runtime context
-  for (size_t input_column_index{0}; input_column_index < _input_columns.size(); ++input_column_index) {
-    const auto& input_column = _input_columns[input_column_index];
-    const auto column_id = input_column.column_id;
-    const auto segment = in_chunk.get_segment(column_id);
-    const auto is_nullable = in_table.column_is_nullable(column_id);
+  _create_jit_readers(in_chunk, segments_are_dictionaries, context.inputs);
 
-    if (segments_are_dictionaries[input_column_index]) {
-      // We need the value ids from a dictionary segment
-      const auto [dict_segment, pos_list] = get_attribute_iterable_data(segment);
-      DebugAssert(dict_segment, "Segment is not a dictionary or a reference segment referencing a dictionary");
-      if (pos_list) {
-        create_iterable_from_attribute_vector(*dict_segment).with_iterators(pos_list, [&](auto it, auto end) {
-          add_iterator(it, ValueID{}, input_column, is_nullable);
-        });
-      } else {
-        create_iterable_from_attribute_vector(*dict_segment).with_iterators([&](auto it, auto end) {
-          add_iterator(it, ValueID{}, input_column, is_nullable);
-        });
-      }
+  for (auto& input_wrapper : _input_wrappers) {
+    if (input_wrapper.first) {
+      use_specialization &= input_wrapper.first->compare_type_and_update_use_cast(context);
     }
-
-    // A query can require both value ids (for predicates) and actual values (for math operations) of a column
-    if (input_column.use_actual_value || !segments_are_dictionaries[input_column_index]) {
-      // We need the actual values of a segment
-      segment_with_iterators(*segment, [&](auto it, const auto end) {
-        using Type = typename decltype(it)::ValueType;
-        add_iterator(it, Type{}, input_column, is_nullable);
-      });
+    if (input_wrapper.second) {
+      use_specialization &= input_wrapper.second->compare_type_and_update_use_cast(context);
     }
   }
+
   return use_specialization;
 }
 
 void JitReadTuples::execute(JitRuntimeContext& context) const {
   for (; context.chunk_offset < context.chunk_size; ++context.chunk_offset) {
     // We read from and advance all segment iterators, before passing the tuple on to the next operator.
-    for (const auto& input : context.inputs) {
-      input->read_value(context);
+    for (const auto& input_wrapper : _input_wrappers) {
+      if (input_wrapper.first) {
+        input_wrapper.first->read_value(context);
+      }
+      if (input_wrapper.second) {
+        input_wrapper.second->read_value(context);
+      }
     }
     _emit(context);
   }

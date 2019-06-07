@@ -85,6 +85,9 @@ TEST_F(JitReadWriteTupleTest, CopyTable) {
   // Initialize operators with actual input table
   auto input_table = load_table("resources/test_data/tbl/int_float_null_sorted_asc.tbl", 2);
   auto output_table = write_tuples->create_output_table(Table(TableColumnDefinitions{}, TableType::Data, 2));
+  std::vector<bool> tuple_non_nullable_information;
+  read_tuples->before_specialization(*input_table, tuple_non_nullable_information);
+  write_tuples->before_specialization(*input_table, tuple_non_nullable_information);
   read_tuples->before_query(*input_table, std::vector<AllTypeVariant>(), context);
   write_tuples->before_query(*output_table, context);
 
@@ -97,7 +100,7 @@ TEST_F(JitReadWriteTupleTest, CopyTable) {
   write_tuples->after_query(*output_table, context);
 
   // Both tables should be equal now
-  EXPECT_TABLE_EQ_ORDERED(input_table, output_table);
+  EXPECT_TABLE_EQ_ORDERED(output_table, input_table);
 }
 
 TEST_F(JitReadWriteTupleTest, LimitRowCountIsEvaluated) {
@@ -368,6 +371,9 @@ TEST_F(JitReadWriteTupleTest, ReadActualValueAndValueIDFromColumn) {
     const auto a_tuple_entry = read_tuples.add_input_column(DataType::Int, false, ColumnID{0});
     read_tuples.set_next_operator(std::make_shared<JitWriteTuples>());
 
+    std::vector<bool> tuple_non_nullable_information;
+    read_tuples.before_specialization(*input_table, tuple_non_nullable_information);
+
     JitRuntimeContext context;
     read_tuples.before_query(*input_table, std::vector<AllTypeVariant>{}, context);
     read_tuples.before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
@@ -393,6 +399,9 @@ TEST_F(JitReadWriteTupleTest, ReadActualValueAndValueIDFromColumn) {
     // clang-format off
     read_tuples.add_value_id_expression(expression);
     read_tuples.set_next_operator(std::make_shared<JitWriteTuples>());
+
+    std::vector<bool> tuple_non_nullable_information;
+    read_tuples.before_specialization(*input_table, tuple_non_nullable_information);
 
     JitRuntimeContext context;
     read_tuples.before_query(*input_table, std::vector<AllTypeVariant>{}, context);
@@ -420,6 +429,9 @@ TEST_F(JitReadWriteTupleTest, ReadActualValueAndValueIDFromColumn) {
     // clang-format off
     read_tuples.add_value_id_expression(expression);
     read_tuples.set_next_operator(std::make_shared<JitWriteTuples>());
+
+    std::vector<bool> tuple_non_nullable_information;
+    read_tuples.before_specialization(*input_table, tuple_non_nullable_information);
 
     JitRuntimeContext context;
     read_tuples.before_query(*input_table, std::vector<AllTypeVariant>{}, context);

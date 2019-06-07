@@ -10,6 +10,8 @@
 
 namespace opossum {
 
+class BaseJitSegmentReaderWrapper;
+
 #define JIT_VARIANT_MEMBER(r, d, type) BOOST_PP_TUPLE_ELEM(3, 0, type) BOOST_PP_TUPLE_ELEM(3, 1, type){};
 
 /* JitVariant stores literal values as std::variant and AllTypeVariant cannot be specialized.
@@ -84,6 +86,8 @@ class JitExpression {
   const JitExpressionType expression_type;
   JitTupleEntry result_entry;
   bool use_value_ids = false;
+
+  std::shared_ptr<BaseJitSegmentReaderWrapper> segment_read_wrapper = nullptr;
 
  private:
   std::pair<const DataType, const bool> _compute_result_type();

@@ -5,6 +5,7 @@
 #include "../jit_constant_mappings.hpp"
 #include "../jit_operations.hpp"
 #include "../jit_types.hpp"
+#include "jit_segment_reader.hpp"
 
 namespace opossum {
 
@@ -100,6 +101,9 @@ std::string JitExpression::to_string() const {
 }
 
 void JitExpression::compute_and_store(JitRuntimeContext& context) const {
+  if (expression_type == JitExpressionType::Column && segment_read_wrapper) {
+    segment_read_wrapper->read_value(context);
+  }
   // We are dealing with an already computed value here, so there is nothing to do.
   if (expression_type == JitExpressionType::Column || expression_type == JitExpressionType::Value) {
     return;

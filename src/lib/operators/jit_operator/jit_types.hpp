@@ -123,6 +123,10 @@ class JitVariantVector {
 
 class BaseJitSegmentReader;
 class BaseJitSegmentWriter;
+struct JitReaderContainer {
+  std::shared_ptr<BaseJitSegmentReader> real_value_reader = nullptr;
+  std::shared_ptr<BaseJitSegmentReader> value_id_reader = nullptr;
+};
 
 // The JitAggregate operator (and possibly future hashing based operators) require an efficient way to hash tuples
 // across multiple columns (i.e., the key-type of the hashmap spans multiple columns).
@@ -141,7 +145,7 @@ struct JitRuntimeContext {
   uint32_t chunk_size;
   ChunkOffset chunk_offset;
   JitVariantVector tuple;
-  std::vector<std::shared_ptr<BaseJitSegmentReader>> inputs;
+  std::vector<JitReaderContainer> inputs;
   std::vector<std::shared_ptr<BaseJitSegmentWriter>> outputs;
   JitRuntimeHashmap hashmap;
   Segments out_chunk;
