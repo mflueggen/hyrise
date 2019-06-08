@@ -631,6 +631,8 @@ if (${ENABLE_JIT_SUPPORT})
         operators/jit_operator/operators/jit_limit.hpp
         operators/jit_operator/operators/jit_read_tuples.cpp
         operators/jit_operator/operators/jit_read_tuples.hpp
+        operators/jit_operator/operators/jit_read_value.cpp
+        operators/jit_operator/operators/jit_read_value.hpp
         operators/jit_operator/operators/jit_segment_reader.hpp
         operators/jit_operator/operators/jit_validate.cpp
         operators/jit_operator/operators/jit_validate.hpp

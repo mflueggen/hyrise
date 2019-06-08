@@ -9,17 +9,20 @@ class BaseJitSegmentReaderWrapper;
 
 class JitReadValue : public AbstractJittable {
 public:
-  explicit JitReadValue(const JitInputColumn input_column,
+  explicit JitReadValue(const size_t tuple_index,
+                        const ColumnID column_id,
                         std::shared_ptr<BaseJitSegmentReaderWrapper> input_segment_wrapper)
-          : AbstractJittable(JitOperatorType::ReadValue), _input_column(input_column),
+          : _tuple_index(tuple_index),
+          _column_id(column_id),
           _input_segment_wrapper(input_segment_wrapper) {}
 
   std::string description() const final;
 
 private:
   void _consume(JitRuntimeContext& context) const final;
-  const JitInputColumn _input_column;
 
+  const size_t _tuple_index;
+  const ColumnID _column_id;
   const std::shared_ptr<BaseJitSegmentReaderWrapper> _input_segment_wrapper;
 };
 

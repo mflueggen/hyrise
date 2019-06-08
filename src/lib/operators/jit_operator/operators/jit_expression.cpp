@@ -80,7 +80,8 @@ JitExpression::JitExpression(const std::shared_ptr<JitExpression>& left_child, c
 
 std::string JitExpression::to_string() const {
   if (expression_type == JitExpressionType::Column) {
-    return "x" + std::to_string(result_entry.tuple_index);
+    std::string read_from = segment_read_wrapper ? " reading" : "";
+    return "x" + std::to_string(result_entry.tuple_index) + read_from;
   } else if (expression_type == JitExpressionType::Value) {
     if (result_entry.data_type != DataType::Null) {
       // JitVariant does not have a operator<<() function.
@@ -178,6 +179,11 @@ std::pair<const DataType, const bool> JitExpression::_compute_result_type() {
 
 template <typename ResultValueType>
 std::optional<ResultValueType> JitExpression::compute(JitRuntimeContext& context) const {
+  // Read values from readers into runtime tuple
+  if (expression_type == JitExpressionType::Column && segment_read_wrapper) {
+    segment_read_wrapper->read_value(context);
+  }
+
   // Value ids are always retrieved from the runtime tuple
   // NOLINTNEXTLINE(bugprone-suspicious-semicolon,misc-suspicious-semicolon) clang tidy identifies a false positive (https://reviews.llvm.org/D46027)
   if constexpr (std::is_same_v<ResultValueType, ValueID>) {

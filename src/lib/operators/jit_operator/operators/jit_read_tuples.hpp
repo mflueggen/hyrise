@@ -111,6 +111,7 @@ class JitReadTuples : public AbstractJittable {
   void execute(JitRuntimeContext& context) const;
 
   const std::shared_ptr<AbstractExpression> row_count_expression;
+  std::vector<std::pair<std::shared_ptr<BaseJitSegmentReaderWrapper>, std::shared_ptr<BaseJitSegmentReaderWrapper>>> _input_wrappers;
 
  protected:
   uint32_t _num_tuple_values{0};
@@ -118,8 +119,6 @@ class JitReadTuples : public AbstractJittable {
   std::vector<JitInputLiteral> _input_literals;
   std::vector<JitInputParameter> _input_parameters;
   std::vector<JitValueIdExpression> _value_id_expressions;
-
-  std::vector<std::pair<std::shared_ptr<BaseJitSegmentReaderWrapper>, std::shared_ptr<BaseJitSegmentReaderWrapper>>> _input_wrappers;
 
  private:
   void _consume(JitRuntimeContext& context) const final {}

@@ -410,8 +410,11 @@ std::shared_ptr<JitExpression> JitAwareLQPTranslator::_try_translate_expression_
         lower_bound_check =
             std::make_shared<JitExpression>(jit_expression_arguments[0], lower_jit_expression,
                                             jit_expression_arguments[1], jit_source.add_temporary_value());
+
+        // Every jit expression should only be used once
+        const auto jit_expression_copy = std::make_shared<JitExpression>(jit_expression_arguments[0]->result_entry);
         upper_bound_check =
-            std::make_shared<JitExpression>(jit_expression_arguments[0], upper_jit_expression,
+            std::make_shared<JitExpression>(jit_expression_copy, upper_jit_expression,
                                             jit_expression_arguments[2], jit_source.add_temporary_value());
 
         if (use_value_ids) {

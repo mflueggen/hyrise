@@ -67,6 +67,7 @@ class JitOperatorWrapper : public AbstractReadOnlyOperator {
   const std::shared_ptr<AbstractJittableSink> _sink() const;
 
   void _prepare_and_specialize_operator_pipeline();
+  void _insert_jit_reader_wrappers();
 
   const JitExecutionMode _execution_mode;
   const std::shared_ptr<SpecializedFunctionWrapper> _specialized_function_wrapper;

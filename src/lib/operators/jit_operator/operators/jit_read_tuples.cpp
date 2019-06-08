@@ -372,15 +372,6 @@ bool JitReadTuples::before_chunk(const Table& in_table, const ChunkID chunk_id,
 
 void JitReadTuples::execute(JitRuntimeContext& context) const {
   for (; context.chunk_offset < context.chunk_size; ++context.chunk_offset) {
-    // We read from and advance all segment iterators, before passing the tuple on to the next operator.
-    for (const auto& input_wrapper : _input_wrappers) {
-      if (input_wrapper.first) {
-        input_wrapper.first->read_value(context);
-      }
-      if (input_wrapper.second) {
-        input_wrapper.second->read_value(context);
-      }
-    }
     _emit(context);
   }
 }

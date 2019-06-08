@@ -46,8 +46,10 @@ public:
 
   // Reads a value from the _iterator into the _tuple_entry and increments the _iterator.
   void read_value(JitRuntimeContext& context) {
+    const size_t current_offset = context.chunk_offset;
+    _iterator += current_offset - _chunk_offset;
+    _chunk_offset = current_offset;
     const auto& value = *_iterator;
-    ++_iterator;
     // clang-format off
     if constexpr (Nullable) {
       context.tuple.set_is_null(_tuple_index, value.is_null());
@@ -65,6 +67,7 @@ public:
 private:
   Iterator _iterator;
   const size_t _tuple_index;
+  size_t _chunk_offset = 0;
 };
 
 
