@@ -19,8 +19,9 @@ std::string type_to_string() {
     return "Bool";
   } else if constexpr (std::is_same_v<T, ValueID>) {
     return "ValueID";
+  } else {
+    return data_type_to_string.left.at(data_type_from_type<T>());
   }
-  return data_type_to_string.left.at(data_type_from_type<T>());
 }
 
 }  // namespace opossum
