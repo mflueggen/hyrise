@@ -1,14 +1,9 @@
-#include <operators/jit_operator/operators/jit_write_tuples.hpp>
 #include "jit_operator_wrapper.hpp"
 
 #include "expression/expression_utils.hpp"
 #include "operators/jit_operator/operators/jit_aggregate.hpp"
-#include "operators/jit_operator/operators/jit_validate.hpp"
-#include "operators/jit_operator/operators/jit_filter.hpp"
-#include "operators/jit_operator/operators/jit_compute.hpp"
-#include "operators/jit_operator/operators/jit_expression.hpp"
-#include "operators/jit_operator/operators/jit_segment_reader.hpp"
-#include "operators/jit_operator/operators/jit_read_value.hpp"
+#include "operators/jit_operator/jit_utils.hpp"
+#include "concurrency/transaction_context.hpp"
 
 namespace opossum {
 
@@ -93,27 +88,27 @@ void JitOperatorWrapper::_prepare_and_specialize_operator_pipeline() {
 
   const auto in_table = input_left()->get_output();
 
-  if (in_table->chunk_count() == 0) return;
-
-  const auto& jit_operators = _specialized_function_wrapper->jit_operators;
+  auto& jit_operators = _specialized_function_wrapper->jit_operators;
 
   std::vector<bool> tuple_non_nullable_information;
   for (auto& jit_operator : jit_operators) {
     jit_operator->before_specialization(*in_table, tuple_non_nullable_information);
   }
 
-  _insert_jit_reader_wrappers();
+  if (in_table->chunk_count()) place_and_create_jit_reader_wrappers(jit_operators);
+
+  std::cout << description(DescriptionMode::MultiLine) << std::endl;
 
   // Connect operators to a chain
-  for (auto it = jit_operators.begin(); it != jit_operators.end() && it + 1 != jit_operators.end(); ++it) {
-    (*it)->set_next_operator(*(it + 1));
-  }
+  connect_jit_operators(jit_operators);
 
-  std::function<void(const JitReadTuples*, JitRuntimeContext&)> execute_func;
+  if (!in_table->chunk_count()) return;
+
+    std::function<void(const JitReadTuples*, JitRuntimeContext&)> execute_func;
   // We want to perform two specialization passes if the operator chain contains a JitAggregate operator, since the
   // JitAggregate operator contains multiple loops that need unrolling.
   auto two_specialization_passes = static_cast<bool>(std::dynamic_pointer_cast<JitAggregate>(_sink()));
-  switch (_execution_mode) {
+  switch (JitExecutionMode::Interpret) {
     case JitExecutionMode::Compile:
       // this corresponds to "opossum::JitReadTuples::execute(opossum::JitRuntimeContext&) const"
       _specialized_function_wrapper->execute_func =
@@ -125,108 +120,6 @@ void JitOperatorWrapper::_prepare_and_specialize_operator_pipeline() {
     case JitExecutionMode::Interpret:
       _specialized_function_wrapper->execute_func = &JitReadTuples::execute;
       break;
-  }
-}
-
-void JitOperatorWrapper::_insert_jit_reader_wrappers() {
-  const auto visit_jit_expressions = [&](const auto& jit_operator, const auto& visitor) {
-    const std::function<void(const std::shared_ptr<JitExpression>, const bool, bool)> recursive_iteration =
-            [&](const std::shared_ptr<JitExpression> expression, const bool use_value_id, bool execution_not_guaranteed) {
-      if (expression->left_child) {
-        recursive_iteration(expression->left_child, expression->use_value_ids, execution_not_guaranteed);
-      }
-      visitor(expression, use_value_id, execution_not_guaranteed);
-      if (expression->right_child) {
-        execution_not_guaranteed |= expression->expression_type == JitExpressionType::Or || expression->expression_type == JitExpressionType::And;
-        recursive_iteration(expression->right_child, expression->use_value_ids, execution_not_guaranteed);
-      }
-    };
-
-    if (const auto jit_filter = std::dynamic_pointer_cast<JitFilter>(jit_operator)) {
-      recursive_iteration(jit_filter->expression, false, false);
-    } else if (const auto jit_compute = std::dynamic_pointer_cast<JitCompute>(jit_operator)) {
-      recursive_iteration(jit_compute->expression, false, false);
-    }
-  };
-
-  struct MapKey {
-    size_t tuple_index;
-    bool use_value_id;
-    bool operator<(const MapKey& other) const {
-      if (tuple_index == other.tuple_index) return use_value_id < other.use_value_id;
-      return tuple_index < other.tuple_index;
-    }
-  };
-  struct MapEntry {
-    size_t count = 0;
-    size_t first_operator_rindex = 0;
-    std::shared_ptr<JitExpression> jit_expression = nullptr;
-    bool load_is_optional = false;
-  };
-  std::map<MapKey, MapEntry> access_counter;  // map tuple index to counters
-  std::map<size_t, size_t> column_lookup;
-  const auto& input_columns = _source()->input_columns();
-  for (size_t input_column_index{0}; input_column_index < input_columns.size(); ++input_column_index) {
-    const auto& input_column = input_columns[input_column_index];
-    column_lookup[input_column.tuple_entry.tuple_index] = input_column_index;
-  }
-
-  auto& jit_operators = _specialized_function_wrapper->jit_operators;
-
-  std::vector<MapKey> order_by_use;
-
-  for (size_t operator_index{0}; operator_index < jit_operators.size(); ++operator_index) {
-    const auto& jit_operator = jit_operators[operator_index];
-
-    const auto count_column_access = [&](const auto& output_columns) {
-      for (const auto& column : output_columns) {
-        if (column_lookup.count(column.tuple_entry.tuple_index)) {
-          MapKey key{column.tuple_entry.tuple_index, false};
-          auto& entry = access_counter[key];
-          if (!entry.count) {
-            entry.first_operator_rindex = jit_operators.size() - operator_index;
-            order_by_use.push_back(key);
-          }
-          ++entry.count;
-        }
-      }
-    };
-
-    if (const auto write_operator = std::dynamic_pointer_cast<JitWriteTuples>(jit_operator)) {
-      count_column_access(write_operator->output_columns());
-    } else if (const auto aggregate_operator = std::dynamic_pointer_cast<JitAggregate>(jit_operator)) {
-      count_column_access(aggregate_operator->groupby_columns());
-      count_column_access(aggregate_operator->aggregate_columns());
-    } else {
-      visit_jit_expressions(jit_operator, [&](const std::shared_ptr<JitExpression>& expression, const bool use_value_id, const bool execution_not_guaranteed) {
-        if (expression->expression_type != JitExpressionType::Column) return;
-        MapKey key{expression->result_entry.tuple_index, use_value_id};
-        auto& entry = access_counter[key];
-        if (!entry.count) {
-          entry.first_operator_rindex = jit_operators.size() - operator_index;
-          entry.load_is_optional = execution_not_guaranteed;
-          entry.jit_expression = expression;
-          order_by_use.push_back(key);
-        }
-        ++entry.count;
-      });
-    }
-  }
-
-  const auto& wrappers = _source()->_input_wrappers;
-
-  for (const auto& column : order_by_use) {
-    const auto& entry = access_counter[column];
-    const auto& column_wrappers = wrappers[column_lookup[column.tuple_index]];
-    const auto& correct_wrapper = column.use_value_id ? column_wrappers.second : column_wrappers.first;
-    if ((!entry.load_is_optional || entry.count == 1) && entry.jit_expression) {
-      correct_wrapper->store_read_value = entry.count > 1;
-      entry.jit_expression->segment_read_wrapper = correct_wrapper;
-    } else {
-      correct_wrapper->store_read_value = true;
-      const auto jit_read_value = std::make_shared<JitReadValue>(column.tuple_index, input_columns[column_lookup[column.tuple_index]].column_id, correct_wrapper);
-      jit_operators.insert(jit_operators.begin() + (jit_operators.size() - entry.first_operator_rindex), jit_read_value);
-    }
   }
 }
 

@@ -102,12 +102,13 @@ std::string JitExpression::to_string() const {
 }
 
 void JitExpression::compute_and_store(JitRuntimeContext& context) const {
-  if (expression_type == JitExpressionType::Column && segment_read_wrapper) {
-    segment_read_wrapper->read_value(context);
-  }
   // We are dealing with an already computed value here, so there is nothing to do.
-  if (expression_type == JitExpressionType::Column || expression_type == JitExpressionType::Value) {
+  if ((expression_type == JitExpressionType::Column && !segment_read_wrapper) || expression_type == JitExpressionType::Value) {
     return;
+  }
+
+  if (expression_type == JitExpressionType::Column && segment_read_wrapper) {
+    return segment_read_wrapper->read_value(context);
   }
 
   // Compute result value using compute<ResultValueType>() function and store it in the runtime tuple
@@ -181,7 +182,7 @@ template <typename ResultValueType>
 std::optional<ResultValueType> JitExpression::compute(JitRuntimeContext& context) const {
   // Read values from readers into runtime tuple
   if (expression_type == JitExpressionType::Column && segment_read_wrapper) {
-    segment_read_wrapper->read_value(context);
+    return segment_read_wrapper->read_value(context, ResultValueType{});
   }
 
   // Value ids are always retrieved from the runtime tuple

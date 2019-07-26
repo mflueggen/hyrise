@@ -2,6 +2,8 @@
 #include "operators/jit_operator/operators/jit_expression.hpp"
 #include "operators/jit_operator/operators/jit_read_tuples.hpp"
 #include "operators/jit_operator/operators/jit_write_tuples.hpp"
+#include "operators/jit_operator/operators/jit_filter.hpp"
+#include "operators/jit_operator/jit_utils.hpp"
 #include "utils/load_table.hpp"
 
 namespace opossum {
@@ -74,7 +76,7 @@ TEST_F(JitReadWriteTupleTest, CopyTable) {
   // Create operator chain that passes from the input tuple to an output table unmodified
   auto read_tuples = std::make_shared<JitReadTuples>();
   auto write_tuples = std::make_shared<JitWriteTuples>();
-  read_tuples->set_next_operator(write_tuples);
+  std::vector<std::shared_ptr<AbstractJittable>> jit_operators{read_tuples, write_tuples};
 
   // Add all input table columns to pipeline
   auto a_tuple_entry = read_tuples->add_input_column(DataType::Int, false, ColumnID{0});
@@ -88,6 +90,10 @@ TEST_F(JitReadWriteTupleTest, CopyTable) {
   std::vector<bool> tuple_non_nullable_information;
   read_tuples->before_specialization(*input_table, tuple_non_nullable_information);
   write_tuples->before_specialization(*input_table, tuple_non_nullable_information);
+
+  place_and_create_jit_reader_wrappers(jit_operators);
+  connect_jit_operators(jit_operators);
+
   read_tuples->before_query(*input_table, std::vector<AllTypeVariant>(), context);
   write_tuples->before_query(*output_table, context);
 
@@ -318,35 +324,43 @@ TEST_F(JitReadWriteTupleTest, UseValueIDsFromReferenceSegment) {
   input_table->append_chunk(segments);
 
   // Create JitReadTuples operator and JitExpressions
-  JitReadTuples read_tuples;
+  auto read_tuples = std::make_shared<JitReadTuples>();
   bool use_actual_value{false};
-  auto a_tuple_entry = read_tuples.add_input_column(DataType::Int, true, ColumnID{0}, use_actual_value);
+  auto a_tuple_entry = read_tuples->add_input_column(DataType::Int, true, ColumnID{0}, use_actual_value);
   AllTypeVariant value{int32_t{4321}};
-  auto literal_a_tuple_entry = read_tuples.add_literal_value(value);
-  auto literal_b_tuple_entry = read_tuples.add_literal_value(value);
+  auto literal_a_tuple_entry = read_tuples->add_literal_value(value);
+  auto literal_b_tuple_entry = read_tuples->add_literal_value(value);
 
   // clang-format off
   auto expression_a = std::make_shared<JitExpression>(std::make_shared<JitExpression>(a_tuple_entry),
                                                       JitExpressionType::LessThan,
                                                       std::make_shared<JitExpression>(literal_a_tuple_entry, value),
-                                                      read_tuples.add_temporary_value());
+                                                      read_tuples->add_temporary_value());
   auto expression_b = std::make_shared<JitExpression>(std::make_shared<JitExpression>(a_tuple_entry),
                                                       JitExpressionType::NotEquals,
                                                       std::make_shared<JitExpression>(literal_b_tuple_entry, value),
-                                                      read_tuples.add_temporary_value());
+                                                      read_tuples->add_temporary_value());
   // clang-format off
-  read_tuples.add_value_id_expression(expression_a);
-  read_tuples.add_value_id_expression(expression_b);
+  auto jit_filter_a = std::make_shared<JitFilter>(expression_a);
+  auto jit_filter_b = std::make_shared<JitFilter>(expression_b);
+  auto write_tuples = std::make_shared<JitWriteTuples>();
 
-  read_tuples.set_next_operator(std::make_shared<JitWriteTuples>());
+  std::vector<std::shared_ptr<AbstractJittable>> jit_operators{read_tuples, jit_filter_a, jit_filter_b, write_tuples};
+
+  read_tuples->add_value_id_expression(expression_a);
+  read_tuples->add_value_id_expression(expression_b);
 
   JitRuntimeContext context;
   std::vector<bool> tuple_non_nullable_information;
-  read_tuples.before_specialization(*input_table, tuple_non_nullable_information);
-  ASSERT_EQ(read_tuples.value_id_expressions().size(), 2u);
-  read_tuples.before_query(*input_table, std::vector<AllTypeVariant>{}, context);
-  read_tuples.before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
-  read_tuples.execute(context);
+  read_tuples->before_specialization(*input_table, tuple_non_nullable_information);
+  ASSERT_EQ(read_tuples->value_id_expressions().size(), 2u);
+
+  place_and_create_jit_reader_wrappers(jit_operators);
+  connect_jit_operators(jit_operators);
+
+  read_tuples->before_query(*input_table, std::vector<AllTypeVariant>{}, context);
+  read_tuples->before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
+  read_tuples->execute(context);
 
   // Used dictionary: 123, 1234, 12345
   // Segment value = 1234 -> value id = 1
@@ -367,80 +381,118 @@ TEST_F(JitReadWriteTupleTest, ReadActualValueAndValueIDFromColumn) {
 
   {
     // Load actual value but not value id
-    JitReadTuples read_tuples;
-    const auto a_tuple_entry = read_tuples.add_input_column(DataType::Int, false, ColumnID{0});
-    read_tuples.set_next_operator(std::make_shared<JitWriteTuples>());
+    auto read_tuples = std::make_shared<JitReadTuples>();
+    const auto a_tuple_entry = read_tuples->add_input_column(DataType::Int, false, ColumnID{0});
+    const auto write_tuples = std::make_shared<JitWriteTuples>();
+    write_tuples->add_output_column_definition("a", a_tuple_entry);
+    std::vector<std::shared_ptr<AbstractJittable>> jit_operators{read_tuples, write_tuples};
 
     std::vector<bool> tuple_non_nullable_information;
-    read_tuples.before_specialization(*input_table, tuple_non_nullable_information);
+    for (const auto& jit_operator : jit_operators) {
+      jit_operator->before_specialization(*input_table, tuple_non_nullable_information);
+    }
+
+    place_and_create_jit_reader_wrappers(jit_operators);
+    connect_jit_operators(jit_operators);
 
     JitRuntimeContext context;
-    read_tuples.before_query(*input_table, std::vector<AllTypeVariant>{}, context);
-    read_tuples.before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
+    read_tuples->before_query(*input_table, std::vector<AllTypeVariant>{}, context);
+    read_tuples->before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
 
     // Set value id to ensure it is not overwritten
     a_tuple_entry.set<ValueID>(ValueID{123456789}, context);
 
-    read_tuples.execute(context);
+    read_tuples->execute(context);
     // Check that only the actual value is set
-    ASSERT_EQ(a_tuple_entry.get<int32_t>(context), 12345);
-    ASSERT_EQ(a_tuple_entry.get<ValueID>(context), ValueID{123456789});
+    EXPECT_EQ(a_tuple_entry.get<int32_t>(context), 12345);
+    EXPECT_EQ(a_tuple_entry.get<ValueID>(context), ValueID{123456789});
   }
 
   {
     // Load value id but not actual value
-    JitReadTuples read_tuples;
+    auto read_tuples = std::make_shared<JitReadTuples>();
     bool use_actual_value{false};
-    const auto a_tuple_entry = read_tuples.add_input_column(DataType::Int, false, ColumnID{0}, use_actual_value);
+    const auto a_tuple_entry = read_tuples->add_input_column(DataType::Int, false, ColumnID{0}, use_actual_value);
     // clang-format off
-    auto expression = std::make_shared<JitExpression>(std::make_shared<JitExpression>(a_tuple_entry),
-                                                      JitExpressionType::IsNull,
-                                                      read_tuples.add_temporary_value());
-    // clang-format off
-    read_tuples.add_value_id_expression(expression);
-    read_tuples.set_next_operator(std::make_shared<JitWriteTuples>());
+    auto value_id_expression_a = std::make_shared<JitExpression>(std::make_shared<JitExpression>(a_tuple_entry),
+                                                                 JitExpressionType::IsNotNull,
+                                                                 read_tuples->add_temporary_value());
+    auto value_id_expression_b = std::make_shared<JitExpression>(std::make_shared<JitExpression>(a_tuple_entry),
+                                                                 JitExpressionType::IsNull,
+                                                                 read_tuples->add_temporary_value());
+    auto expression = std::make_shared<JitExpression>(value_id_expression_a,
+                                                      JitExpressionType::Or,
+                                                      value_id_expression_b,
+                                                      read_tuples->add_temporary_value());
+    // clang-format on
+    read_tuples->add_value_id_expression(value_id_expression_a);
+    read_tuples->add_value_id_expression(value_id_expression_b);
+    auto jit_filter = std::make_shared<JitFilter>(expression);
+    const auto write_tuples = std::make_shared<JitWriteTuples>();
+    std::vector<std::shared_ptr<AbstractJittable>> jit_operators{read_tuples, jit_filter, write_tuples};
 
     std::vector<bool> tuple_non_nullable_information;
-    read_tuples.before_specialization(*input_table, tuple_non_nullable_information);
+    for (const auto& jit_operator : jit_operators) {
+      jit_operator->before_specialization(*input_table, tuple_non_nullable_information);
+    }
+
+    place_and_create_jit_reader_wrappers(jit_operators);
+    connect_jit_operators(jit_operators);
 
     JitRuntimeContext context;
-    read_tuples.before_query(*input_table, std::vector<AllTypeVariant>{}, context);
-    read_tuples.before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
+    read_tuples->before_query(*input_table, std::vector<AllTypeVariant>{}, context);
+    read_tuples->before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
 
     // Set actual value to ensure it is not overwritten
     a_tuple_entry.set<int32_t>(123456789, context);
 
-    read_tuples.execute(context);
+    read_tuples->execute(context);
     // Check that only the value id is set
-    ASSERT_EQ(a_tuple_entry.get<int32_t>(context), 123456789);
-    ASSERT_EQ(a_tuple_entry.get<ValueID>(context), ValueID{2});
+    EXPECT_EQ(a_tuple_entry.get<int32_t>(context), 123456789);
+    EXPECT_EQ(a_tuple_entry.get<ValueID>(context), ValueID{2});
   }
 
   {
     // Load actual value and value id
-    JitReadTuples read_tuples;
-    read_tuples.add_input_column(DataType::Int, false, ColumnID{0});
+    auto read_tuples = std::make_shared<JitReadTuples>();
+    read_tuples->add_input_column(DataType::Int, false, ColumnID{0});
     bool use_actual_value{false};
-    const auto a_tuple_entry = read_tuples.add_input_column(DataType::Int, false, ColumnID{0}, use_actual_value);
+    const auto a_tuple_entry = read_tuples->add_input_column(DataType::Int, false, ColumnID{0}, use_actual_value);
     // clang-format off
-    auto expression = std::make_shared<JitExpression>(std::make_shared<JitExpression>(a_tuple_entry),
-                                                      JitExpressionType::IsNull,
-                                                      read_tuples.add_temporary_value());
-    // clang-format off
-    read_tuples.add_value_id_expression(expression);
-    read_tuples.set_next_operator(std::make_shared<JitWriteTuples>());
+    auto value_id_expression_a = std::make_shared<JitExpression>(std::make_shared<JitExpression>(a_tuple_entry),
+                                                                 JitExpressionType::IsNotNull,
+                                                                 read_tuples->add_temporary_value());
+    auto value_id_expression_b = std::make_shared<JitExpression>(std::make_shared<JitExpression>(a_tuple_entry),
+                                                                 JitExpressionType::IsNull,
+                                                                 read_tuples->add_temporary_value());
+    auto expression = std::make_shared<JitExpression>(value_id_expression_a,
+                                                      JitExpressionType::Or,
+                                                      value_id_expression_b,
+                                                      read_tuples->add_temporary_value());
+    // clang-format on
+    read_tuples->add_value_id_expression(value_id_expression_a);
+    read_tuples->add_value_id_expression(value_id_expression_b);
+    auto jit_filter = std::make_shared<JitFilter>(expression);
+    const auto write_tuples = std::make_shared<JitWriteTuples>();
+    write_tuples->add_output_column_definition("a", a_tuple_entry);
+    std::vector<std::shared_ptr<AbstractJittable>> jit_operators{read_tuples, jit_filter, write_tuples};
 
     std::vector<bool> tuple_non_nullable_information;
-    read_tuples.before_specialization(*input_table, tuple_non_nullable_information);
+    for (const auto& jit_operator : jit_operators) {
+      jit_operator->before_specialization(*input_table, tuple_non_nullable_information);
+    }
+
+    place_and_create_jit_reader_wrappers(jit_operators);
+    connect_jit_operators(jit_operators);
 
     JitRuntimeContext context;
-    read_tuples.before_query(*input_table, std::vector<AllTypeVariant>{}, context);
-    read_tuples.before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
+    read_tuples->before_query(*input_table, std::vector<AllTypeVariant>{}, context);
+    read_tuples->before_chunk(*input_table, ChunkID{0}, std::vector<AllTypeVariant>{}, context);
 
-    read_tuples.execute(context);
+    read_tuples->execute(context);
     // Check that actual value and value id are set
-    ASSERT_EQ(a_tuple_entry.get<int32_t>(context), 12345);
-    ASSERT_EQ(a_tuple_entry.get<ValueID>(context), ValueID{2});
+    EXPECT_EQ(a_tuple_entry.get<int32_t>(context), 12345);
+    EXPECT_EQ(a_tuple_entry.get<ValueID>(context), ValueID{2});
   }
 }
 

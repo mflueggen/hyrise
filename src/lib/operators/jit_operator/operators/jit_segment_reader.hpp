@@ -1,8 +1,19 @@
 #pragma once
 
 #include "../jit_types.hpp"
+#include "../jit_utils.hpp"
 
 namespace opossum {
+
+#define JIT_EXPLICIT_GET_FUNCTION(r, _, type) \
+  virtual std::optional<BOOST_PP_TUPLE_ELEM(3, 0, type)> read_value(JitRuntimeContext& context, const BOOST_PP_TUPLE_ELEM(3, 0, type)) { \
+    Fail("Data type " + type_to_string<BOOST_PP_TUPLE_ELEM(3, 0, type)>() + " does not match reader data type."); \
+  }
+
+#define JIT_EXPLICIT_GET_AND_STORE_FUNCTION(r, _, type) \
+  virtual std::optional<BOOST_PP_TUPLE_ELEM(3, 0, type)> read_and_store_value(JitRuntimeContext& context, const BOOST_PP_TUPLE_ELEM(3, 0, type)) { \
+     Fail("Data type " + type_to_string<BOOST_PP_TUPLE_ELEM(3, 0, type)>() + " does not match reader data type."); \
+  }
 
 class BaseJitSegmentReaderWrapper;
 
@@ -14,6 +25,8 @@ class BaseJitSegmentReader {
 public:
   virtual ~BaseJitSegmentReader() = default;
   virtual void read_value(JitRuntimeContext& context) = 0;
+  BOOST_PP_SEQ_FOR_EACH(JIT_EXPLICIT_GET_FUNCTION, _, JIT_DATA_TYPE_INFO_WITH_VALUE_ID)
+  BOOST_PP_SEQ_FOR_EACH(JIT_EXPLICIT_GET_AND_STORE_FUNCTION, _, JIT_DATA_TYPE_INFO_WITH_VALUE_ID)
   virtual std::shared_ptr<BaseJitSegmentReaderWrapper> create_wrapper(const size_t reader_index) const = 0;
 };
 
@@ -45,24 +58,43 @@ public:
           : _iterator{iterator}, _tuple_index{tuple_index} {}
 
   // Reads a value from the _iterator into the _tuple_entry and increments the _iterator.
-  void read_value(JitRuntimeContext& context) {
+  std::optional<DataType> read_value(JitRuntimeContext& context, const DataType) {
     const size_t current_offset = context.chunk_offset;
     _iterator += current_offset - _chunk_offset;
     _chunk_offset = current_offset;
-    const auto& value = *_iterator;
+    const auto value = *_iterator;
     // clang-format off
     if constexpr (Nullable) {
-      context.tuple.set_is_null(_tuple_index, value.is_null());
-      if (!value.is_null()) {
-        context.tuple.set<DataType>(_tuple_index, value.value());
+      if (value.is_null()) {
+        return std::nullopt;
       }
-    } else {
-      context.tuple.set<DataType>(_tuple_index, value.value());
     }
+    return value.value();
     // clang-format on
   }
 
-  virtual std::shared_ptr<BaseJitSegmentReaderWrapper> create_wrapper(const size_t reader_index) const;
+  std::optional<DataType> read_and_store_value(JitRuntimeContext& context, const DataType) {
+    const size_t current_offset = context.chunk_offset;
+    _iterator += current_offset - _chunk_offset;
+    _chunk_offset = current_offset;
+    const auto value = *_iterator;
+    // clang-format off
+    if constexpr (Nullable) {
+      context.tuple.set_is_null(_tuple_index, value.is_null());
+      if (value.is_null()) {
+        return std::nullopt;
+      }
+    }
+    context.tuple.set<DataType>(_tuple_index, value.value());
+    return value.value();
+    // clang-format on
+  }
+
+  void read_value(JitRuntimeContext& context) {
+    read_and_store_value(context, DataType{});
+  }
+
+  std::shared_ptr<BaseJitSegmentReaderWrapper> create_wrapper(const size_t reader_index) const final;
 
 private:
   Iterator _iterator;
@@ -76,6 +108,7 @@ public:
   BaseJitSegmentReaderWrapper(const size_t reader_index, const bool read_value_ids) : read_value_ids(read_value_ids), _reader_index(reader_index) {}
   virtual ~BaseJitSegmentReaderWrapper() = default;
 
+  BOOST_PP_SEQ_FOR_EACH(JIT_EXPLICIT_GET_FUNCTION, _, JIT_DATA_TYPE_INFO_WITH_VALUE_ID)
   virtual void read_value(JitRuntimeContext& context) = 0;
 
   virtual bool compare_type_and_update_use_cast(JitRuntimeContext& context) { return true; }
@@ -87,21 +120,49 @@ protected:
   const size_t _reader_index;
 };
 
+#define JIT_EXPLICIT_READ_VALUE_FUNCTION(r, _, type) \
+  std::optional<BOOST_PP_TUPLE_ELEM(3, 0, type)> read_value(JitRuntimeContext& context, const BOOST_PP_TUPLE_ELEM(3, 0, type)) final { \
+    std::shared_ptr<BaseJitSegmentReader> reader; \
+    if constexpr (std::is_same_v<BOOST_PP_TUPLE_ELEM(3, 0, type), ValueID>) { \
+      reader = context.inputs[_reader_index].value_id_reader; \
+    } else { \
+      reader = context.inputs[_reader_index].real_value_reader; \
+    } \
+    if (store_read_value) { \
+      if constexpr (std::is_same_v<BOOST_PP_TUPLE_ELEM(3, 0, type), ReaderDataType>) { \
+        if (_use_cast) { \
+          return std::static_pointer_cast<JitSegmentReader>(reader)->read_and_store_value(context, BOOST_PP_TUPLE_ELEM(3, 0, type){}); \
+        } \
+      } \
+      return reader->read_and_store_value(context, BOOST_PP_TUPLE_ELEM(3, 0, type){}); \
+    } else { \
+      if constexpr (std::is_same_v<BOOST_PP_TUPLE_ELEM(3, 0, type), ReaderDataType>) { \
+        if (_use_cast) { \
+          return std::static_pointer_cast<JitSegmentReader>(reader)->read_value(context, BOOST_PP_TUPLE_ELEM(3, 0, type){}); \
+        } \
+      } \
+      return reader->read_value(context, BOOST_PP_TUPLE_ELEM(3, 0, type){}); \
+    } \
+  }
+
 template <typename JitSegmentReader>
 class JitSegmentReaderWrapper : public BaseJitSegmentReaderWrapper {
 public:
   //using BaseJitSegmentReaderWrapper::BaseJitSegmentReaderWrapper;
-  static constexpr bool can_read_value_ids = std::is_same_v<typename JitSegmentReader::ReaderDataType, ValueID>;
+  using ReaderDataType = typename JitSegmentReader::ReaderDataType;
+  static constexpr bool can_read_value_ids = std::is_same_v<ReaderDataType, ValueID>;
 
   JitSegmentReaderWrapper(const size_t reader_index) : BaseJitSegmentReaderWrapper(reader_index, can_read_value_ids) {}
 
   // Reads a value from the _iterator into the _tuple_value and increments the _iterator.
-  void read_value(JitRuntimeContext& context) final {
+  BOOST_PP_SEQ_FOR_EACH(JIT_EXPLICIT_READ_VALUE_FUNCTION, _, JIT_DATA_TYPE_INFO_WITH_VALUE_ID)
+
+  void read_value(JitRuntimeContext& context) {
     auto& reader = read_value_ids ? context.inputs[_reader_index].value_id_reader : context.inputs[_reader_index].real_value_reader;
     if (_use_cast) {
-      std::static_pointer_cast<JitSegmentReader>(reader)->read_value(context);
+      std::static_pointer_cast<JitSegmentReader>(reader)->read_and_store_value(context, ReaderDataType{});
     } else {
-      reader->read_value(context);
+      reader->read_and_store_value(context, ReaderDataType{});
     }
   }
 

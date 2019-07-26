@@ -648,6 +648,8 @@ if (${ENABLE_JIT_SUPPORT})
         logical_query_plan/jit_aware_lqp_translator.hpp
         operators/jit_operator/jit_constant_mappings.cpp
         operators/jit_operator/jit_constant_mappings.hpp
+        operators/jit_operator/jit_utils.cpp
+        operators/jit_operator/jit_utils.hpp
         operators/jit_operator/specialization/jit_compiler.cpp
         operators/jit_operator/specialization/jit_compiler.hpp
         operators/jit_operator/specialization/jit_code_specializer.cpp
