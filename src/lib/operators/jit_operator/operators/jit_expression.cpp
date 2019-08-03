@@ -80,8 +80,8 @@ JitExpression::JitExpression(const std::shared_ptr<JitExpression>& left_child, c
 
 std::string JitExpression::to_string() const {
   if (expression_type == JitExpressionType::Column) {
-    std::string read_from = segment_read_wrapper ? " reading" : "";
-    return "x" + std::to_string(result_entry.tuple_index) + read_from;
+    std::string is_reader = segment_read_wrapper ? " (reader)" : "";
+    return "x" + std::to_string(result_entry.tuple_index) + is_reader;
   } else if (expression_type == JitExpressionType::Value) {
     if (result_entry.data_type != DataType::Null) {
       // JitVariant does not have a operator<<() function.
@@ -108,7 +108,8 @@ void JitExpression::compute_and_store(JitRuntimeContext& context) const {
   }
 
   if (expression_type == JitExpressionType::Column && segment_read_wrapper) {
-    return segment_read_wrapper->read_value(context);
+    segment_read_wrapper->read_and_store_value(context);
+    return;
   }
 
   // Compute result value using compute<ResultValueType>() function and store it in the runtime tuple
@@ -182,7 +183,7 @@ template <typename ResultValueType>
 std::optional<ResultValueType> JitExpression::compute(JitRuntimeContext& context) const {
   // Read values from readers into runtime tuple
   if (expression_type == JitExpressionType::Column && segment_read_wrapper) {
-    return segment_read_wrapper->read_value(context, ResultValueType{});
+    return segment_read_wrapper->read_and_get_value(context, ResultValueType{});
   }
 
   // Value ids are always retrieved from the runtime tuple
