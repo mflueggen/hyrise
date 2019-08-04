@@ -195,7 +195,7 @@ void JitReadTuples::before_specialization(const Table& in_table, std::vector<boo
 
   // Create input wrapper
   std::vector<JitReaderContainer> readers;
-  _create_jit_readers(chunk, segments_are_dictionaries, readers);
+  _create_jit_readers(*chunk, segments_are_dictionaries, readers);
   _input_wrappers.resize(readers.size());
   for (size_t i = 0; i < readers.size(); ++i) {
     auto& segment_readers = readers[i];
