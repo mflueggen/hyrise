@@ -411,7 +411,8 @@ std::shared_ptr<JitExpression> JitAwareLQPTranslator::_try_translate_expression_
             std::make_shared<JitExpression>(jit_expression_arguments[0], lower_jit_expression,
                                             jit_expression_arguments[1], jit_source.add_temporary_value());
 
-        // Every jit expression should only be used once
+        // Every jit expression should only be used only at one place in the operator pipeline. This is necessary to
+        // ensure that a jit expression only reads once from an input column.
         const auto jit_expression_copy = std::make_shared<JitExpression>(jit_expression_arguments[0]->result_entry);
         upper_bound_check =
             std::make_shared<JitExpression>(jit_expression_copy, upper_jit_expression,

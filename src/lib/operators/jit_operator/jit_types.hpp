@@ -123,6 +123,8 @@ class JitVariantVector {
 
 class BaseJitSegmentReader;
 class BaseJitSegmentWriter;
+// Readers for real values and value ids are stored together to allow an easy change from one reader to the other
+// without updating the reader index (last chunk might be unencoded)
 struct JitReaderContainer {
   std::shared_ptr<BaseJitSegmentReader> real_value_reader = nullptr;
   std::shared_ptr<BaseJitSegmentReader> value_id_reader = nullptr;
