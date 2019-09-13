@@ -100,7 +100,7 @@ try {
               sh "./scripts/test/hyriseConsole_test.py clang-release"
               sh "./scripts/test/hyriseBenchmarkJoinOrder_test.py clang-release"
               sh "./scripts/test/hyriseBenchmarkFileBased_test.py clang-release"
-              sh "./scripts/test/hyriseBenchmarkTPCH_test.py clang-release"
+              sh "cd clang-release && ../scripts/test/hyriseBenchmarkTPCH_test.py ." // Own folder to isolate visualization
 
             } else {
               Utils.markStageSkippedForConditional("clangRelease")
@@ -114,11 +114,11 @@ try {
               sh "./scripts/test/hyriseConsole_test.py clang-debug"
               sh "./scripts/test/hyriseBenchmarkJoinOrder_test.py clang-debug"
               sh "./scripts/test/hyriseBenchmarkFileBased_test.py clang-debug"
-              sh "./scripts/test/hyriseBenchmarkTPCH_test.py clang-debug"
+              sh "cd clang-debug && ../scripts/test/hyriseBenchmarkTPCH_test.py ." // Own folder to isolate visualization
               sh "./scripts/test/hyriseConsole_test.py gcc-debug"
               sh "./scripts/test/hyriseBenchmarkJoinOrder_test.py gcc-debug"
               sh "./scripts/test/hyriseBenchmarkFileBased_test.py gcc-debug"
-              sh "./scripts/test/hyriseBenchmarkTPCH_test.py gcc-debug"
+              sh "cd gcc-debug && ../scripts/test/hyriseBenchmarkTPCH_test.py ." // Own folder to isolate visualization
 
             } else {
               Utils.markStageSkippedForConditional("debugSystemTests")
@@ -162,7 +162,7 @@ try {
               sh "./scripts/test/hyriseConsole_test.py gcc-release"
               sh "./scripts/test/hyriseBenchmarkJoinOrder_test.py gcc-release"
               sh "./scripts/test/hyriseBenchmarkFileBased_test.py gcc-release"
-              sh "./scripts/test/hyriseBenchmarkTPCH_test.py gcc-release"
+              sh "cd gcc-release && ../scripts/test/hyriseBenchmarkTPCH_test.py ." // Own folder to isolate visualization
             }
           } else {
               Utils.markStageSkippedForConditional("gccRelease")
@@ -232,14 +232,34 @@ try {
           }
         }
 
-        stage("memcheckReleaseTest") {
-          // Runs separately as it depends on clang-release to be built
-          if (env.BRANCH_NAME == 'master' || full_ci) {
-            sh "mkdir ./clang-release-memcheck-test"
-            // If this shows a leak, try --leak-check=full, which is slower but more precise
-            sh "valgrind --tool=memcheck --error-exitcode=1 --gen-suppressions=all --num-callers=25 --suppressions=resources/.valgrind-ignore.txt ./clang-release/hyriseTest clang-release-memcheck-test --gtest_filter=-NUMAMemoryResourceTest.BasicAllocate"
-          } else {
-            Utils.markStageSkippedForConditional("memcheckReleaseTest")
+        parallel memcheckReleaseTest: {
+          stage("memcheckReleaseTest") {
+            // Runs separately as it depends on clang-release to be built
+            if (env.BRANCH_NAME == 'master' || full_ci) {
+              sh "mkdir ./clang-release-memcheck-test"
+              // If this shows a leak, try --leak-check=full, which is slower but more precise
+              sh "valgrind --tool=memcheck --error-exitcode=1 --gen-suppressions=all --num-callers=25 --suppressions=resources/.valgrind-ignore.txt ./clang-release/hyriseTest clang-release-memcheck-test --gtest_filter=-NUMAMemoryResourceTest.BasicAllocate"
+            } else {
+              Utils.markStageSkippedForConditional("memcheckReleaseTest")
+            }
+          }
+        }, tpchQueryPlans: {
+          stage("tpchQueryPlans") {
+            if (env.BRANCH_NAME == 'master' || full_ci) {
+              sh "mkdir -p query_plans/tpch; cd query_plans/tpch; ../../clang-release/hyriseBenchmarkTPCH -r 1 --visualize"
+              archiveArtifacts artifacts: 'query_plans/tpch/*.svg'
+            } else {
+              Utils.markStageSkippedForConditional("tpchQueryPlans")
+            }
+          }
+        }, tpcdsQueryPlans: {
+          stage("tpcdsQueryPlans") {
+            if (env.BRANCH_NAME == 'master' || full_ci) {
+              sh "mkdir -p query_plans/tpcds; cd query_plans/tpcds; ln -s ../../resources; ../../clang-release/hyriseBenchmarkTPCDS -r 1 --visualize"
+              archiveArtifacts artifacts: 'query_plans/tpcds/*.svg'
+            } else {
+              Utils.markStageSkippedForConditional("tpcdsQueryPlans")
+            }
           }
         }
       } finally {
