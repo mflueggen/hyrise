@@ -12,7 +12,6 @@
 #include "logical_query_plan/mock_node.hpp"
 #include "operators/abstract_operator.hpp"
 #include "operators/table_scan.hpp"
-#include "scheduler/current_scheduler.hpp"
 #include "sql/sql_pipeline_builder.hpp"
 #include "sql/sql_plan_cache.hpp"
 #include "statistics/attribute_statistics.hpp"
@@ -73,9 +72,6 @@ class BaseTestWithParam
    * GTest runs the destructor right after TearDown(): https://github.com/abseil/googletest/blob/master/googletest/docs/faq.md#should-i-use-the-constructordestructor-of-the-test-fixture-or-setupteardown
    */
   ~BaseTestWithParam() {
-    // Reset scheduler first so that all tasks are done before we kill the StorageManager
-    CurrentScheduler::set(nullptr);
-
     Hyrise::reset();
     SQLPipelineBuilder::default_pqp_cache = nullptr;
     SQLPipelineBuilder::default_lqp_cache = nullptr;
@@ -165,6 +161,21 @@ class BaseTestWithParam
     }
 
     return chunk_encoding_spec;
+  }
+
+  static std::vector<SegmentEncodingSpec> get_supporting_segment_encodings_specs(const DataType data_type,
+                                                                                 const bool include_unencoded = true) {
+    std::vector<SegmentEncodingSpec> segment_encodings;
+    for (const auto& spec : all_segment_encoding_specs) {
+      // Add all encoding types to the returned vector if they support the given data type. As some test cases work on
+      // encoded segments only, it is further tested if the segment is not encoded and if segments of type Unencoded
+      // should be included or not (flag `include_unencoded`).
+      if (encoding_supports_data_type(spec.encoding_type, data_type) &&
+          (spec.encoding_type != EncodingType::Unencoded || include_unencoded)) {
+        segment_encodings.emplace_back(spec);
+      }
+    }
+    return segment_encodings;
   }
 };
 
