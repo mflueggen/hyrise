@@ -35,9 +35,10 @@ class SegmentAccessCounter {
 
     std::string to_string() const;
 
-    inline static const std::string HEADERS = "Other,IteratorCreate,IteratorSeqAccess,IteratorIncreasingAccess,"
-                                              "IteratorRandomAccess,AccessorCreate,AccessorAccess,"
-                                              "DictionaryAccess";
+    inline static const std::string HEADERS =
+        "Other,IteratorCreate,IteratorSeqAccess,IteratorIncreasingAccess,"
+        "IteratorRandomAccess,AccessorCreate,AccessorAccess,"
+        "DictionaryAccess";
   };
 
   void on_iterator_create(uint64_t count);
@@ -53,6 +54,14 @@ class SegmentAccessCounter {
   void on_other_access(uint64_t count);
 
   void reset();
+
+  void set_counter_values(uint64_t other, uint64_t iterator_create, uint64_t iterator_seq_access,
+                          uint64_t iterator_increasing_access, uint64_t iterator_random_access,
+                          uint64_t accessor_create, uint64_t accessor_access, uint64_t dictionary_access);
+
+  void set_counter_values(const Counter<uint64_t>& counter);
+
+  void set_counter_values(const SegmentAccessCounter& counter);
 
   Counter<uint64_t> counter() const;
 
@@ -70,17 +79,18 @@ class SegmentAccessCounter {
   // 3 (sequentially decreasing), difference between two neighboring elements is -1 or 0.
   // 4 (decreasing randomly)
   // 5 (random access)
-  enum class AccessPattern {Unknown, SeqInc, RndInc, SeqDec, RndDec, Rnd};
+  enum class AccessPattern { Unknown, SeqInc, RndInc, SeqDec, RndDec, Rnd };
   // There are five possible inputs
-  enum class Input {Zero, One, Positive, NegativeOne, Negative};
+  enum class Input { Zero, One, Positive, NegativeOne, Negative };
 
-  constexpr static const std::array<std::array<AccessPattern, 5 /*|Input|*/>, 6 /*|AccessPattern|*/>
-    _transitions{{{AccessPattern::Unknown, AccessPattern::SeqInc, AccessPattern::SeqInc, AccessPattern::SeqDec, AccessPattern::SeqDec},
-                   {AccessPattern::SeqInc, AccessPattern::SeqInc, AccessPattern::RndInc, AccessPattern::Rnd, AccessPattern::Rnd},
-                   {AccessPattern::RndInc, AccessPattern::RndInc, AccessPattern::RndInc, AccessPattern::Rnd, AccessPattern::Rnd},
-                   {AccessPattern::SeqDec, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::SeqDec, AccessPattern::RndDec},
-                   {AccessPattern::RndDec, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::RndDec, AccessPattern::RndDec},
-                   {AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd}}};
+  constexpr static const std::array<std::array<AccessPattern, 5 /*|Input|*/>, 6 /*|AccessPattern|*/> _transitions{
+      {{AccessPattern::Unknown, AccessPattern::SeqInc, AccessPattern::SeqInc, AccessPattern::SeqDec,
+        AccessPattern::SeqDec},
+       {AccessPattern::SeqInc, AccessPattern::SeqInc, AccessPattern::RndInc, AccessPattern::Rnd, AccessPattern::Rnd},
+       {AccessPattern::RndInc, AccessPattern::RndInc, AccessPattern::RndInc, AccessPattern::Rnd, AccessPattern::Rnd},
+       {AccessPattern::SeqDec, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::SeqDec, AccessPattern::RndDec},
+       {AccessPattern::RndDec, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::RndDec, AccessPattern::RndDec},
+       {AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd}}};
 
   static AccessPattern _iterator_access_pattern(const std::shared_ptr<const PosList>& positions);
 };

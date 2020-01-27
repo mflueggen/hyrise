@@ -1,5 +1,3 @@
-#include "gtest/gtest.h"
-
 #include <atomic>
 #include <map>
 #include <memory>
@@ -7,13 +5,12 @@
 
 #include "base_test.hpp"
 #include "storage/create_iterable_from_segment.hpp"
+#include "storage/segment_access_counter.hpp"
 #include "storage/table.hpp"
 #include "storage/table_column_definition.hpp"
-#include "storage/segment_access_counter.hpp"
 #include "storage/value_segment.hpp"
 #include "storage/value_segment/value_segment_iterable.hpp"
 #include "types.hpp"
-
 
 namespace opossum {
 
@@ -22,18 +19,18 @@ class SegmentAccessCounterCounterTest : public BaseTest {
  public:
   static void SetUpTestCase() {}
 
-  void SetUp() override { }
+  void SetUp() override {}
 
-  void TearDown() override { }
+  void TearDown() override {}
 };
 
 class SegmentAccessCounterTest : public BaseTest {
  public:
   static void SetUpTestCase() {}
 
-  void SetUp() override { }
+  void SetUp() override {}
 
-  void TearDown() override { }
+  void TearDown() override {}
 
  protected:
   using AccessPattern = SegmentAccessCounter::AccessPattern;
@@ -44,8 +41,8 @@ class SegmentAccessCounterTest : public BaseTest {
   }
 };
 
-typedef ::testing::Types <uint64_t, std::atomic_uint64_t> CounterTypes;
-TYPED_TEST_SUITE(SegmentAccessCounterCounterTest, CounterTypes);
+typedef ::testing::Types<uint64_t, std::atomic_uint64_t> CounterTypes;
+TYPED_TEST_SUITE(SegmentAccessCounterCounterTest, CounterTypes, );  // NOLINT(whitespace/parens)
 
 TYPED_TEST(SegmentAccessCounterCounterTest, ZeroOnConstruction) {
   SegmentAccessCounter::Counter<TypeParam> counter;
@@ -115,9 +112,9 @@ TEST_F(SegmentAccessCounterTest, IteratorAccessPatternIncreasing) {
   positions->push_back({ChunkID{0}, ChunkOffset{1}});
   EXPECT_EQ(AccessPattern::SeqInc, _iterator_access_pattern(positions));
   positions->push_back({ChunkID{0}, ChunkOffset{3}});
-  EXPECT_EQ(AccessPattern::RndInc,_iterator_access_pattern(positions));
+  EXPECT_EQ(AccessPattern::RndInc, _iterator_access_pattern(positions));
   positions->push_back({ChunkID{0}, ChunkOffset{3}});
-  EXPECT_EQ(AccessPattern::RndInc,_iterator_access_pattern(positions));
+  EXPECT_EQ(AccessPattern::RndInc, _iterator_access_pattern(positions));
   positions->push_back({ChunkID{0}, ChunkOffset{1}});
   EXPECT_EQ(AccessPattern::Rnd, _iterator_access_pattern(positions));
 }
@@ -131,13 +128,11 @@ TEST_F(SegmentAccessCounterTest, IteratorAccessPatternDecreasing) {
   positions->push_back({ChunkID{0}, ChunkOffset{665}});
   EXPECT_EQ(AccessPattern::SeqDec, _iterator_access_pattern(positions));
   positions->push_back({ChunkID{0}, ChunkOffset{665}});
-  EXPECT_EQ(AccessPattern::SeqDec,_iterator_access_pattern(positions));
+  EXPECT_EQ(AccessPattern::SeqDec, _iterator_access_pattern(positions));
   positions->push_back({ChunkID{0}, ChunkOffset{660}});
-  EXPECT_EQ(AccessPattern::RndDec,_iterator_access_pattern(positions));
+  EXPECT_EQ(AccessPattern::RndDec, _iterator_access_pattern(positions));
   positions->push_back({ChunkID{0}, ChunkOffset{666}});
   EXPECT_EQ(AccessPattern::Rnd, _iterator_access_pattern(positions));
 }
-
-
 
 }  // namespace opossum

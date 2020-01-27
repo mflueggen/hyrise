@@ -40,7 +40,6 @@
 #include "sql/sql_plan_cache.hpp"
 #include "sql/sql_translator.hpp"
 #include "storage/chunk_encoder.hpp"
-#include "storage/segment_access_counter.hpp"
 #include "tpcc/tpcc_table_generator.hpp"
 #include "tpcds/tpcds_table_generator.hpp"
 #include "tpch/tpch_table_generator.hpp"
@@ -151,9 +150,6 @@ Console::Console()
   register_command("setting", std::bind(&Console::_change_runtime_setting, this, std::placeholders::_1));
   register_command("load_plugin", std::bind(&Console::_load_plugin, this, std::placeholders::_1));
   register_command("unload_plugin", std::bind(&Console::_unload_plugin, this, std::placeholders::_1));
-  register_command("ssac", std::bind(&Console::_save_segment_access_counter, this, std::placeholders::_1));
-  register_command("csac", std::bind(&Console::_clear_segment_access_counter, this, std::placeholders::_1));
-  register_command("set_capture_interval", std::bind(&Console::_set_capture_interval, this, std::placeholders::_1));
 }
 
 int Console::read() {
@@ -512,60 +508,6 @@ int Console::_generate_tpcds(const std::string& args) {
 
   out("Generating all TPC-DS tables (this might take a while) ...\n");
   TpcdsTableGenerator{scale_factor, chunk_size}.generate_and_store();
-
-  return ReturnCode::Ok;
-}
-
-int Console::_save_segment_access_counter(const std::string& args) {
-  auto input = args;
-  boost::algorithm::trim<std::string>(input);
-  auto arguments = std::vector<std::string>{};
-  boost::algorithm::split(arguments, input, boost::is_space());
-
-  // Check whether there is exactly one argument.
-  auto args_valid = arguments.size() == 2;
-  if (!args_valid || arguments[0].empty() || arguments[1].empty()) {
-    out("Wrong input.\n");
-    out("Usage: ssac PATH_TO_META_DATA PATH_TO_ACCESS_COUNTERS");
-    return ReturnCode::Error;
-  }
-
-  const auto path_to_meta_data = arguments[0];
-  const auto path_to_access_counters = arguments[1];
-
-  SegmentAccessStatistics::save_to_csv(Hyrise::get().storage_manager.tables(), path_to_meta_data,
-                                         path_to_access_counters);
-
-  return ReturnCode::Ok;
-}
-
-int Console::_clear_segment_access_counter(const std::string& args) {
-  auto input = args;
-  boost::algorithm::trim<std::string>(input);
-  auto arguments = std::vector<std::string>{};
-  boost::algorithm::split(arguments, input, boost::is_space());
-
-  SegmentAccessStatistics::reset_all(Hyrise::get().storage_manager.tables());
-
-  return ReturnCode::Ok;
-}
-
-int Console::_set_capture_interval(const std::string& args) {
-  auto input = args;
-  boost::algorithm::trim<std::string>(input);
-  auto arguments = std::vector<std::string>{};
-  boost::algorithm::split(arguments, input, boost::is_space());
-
-  // Check whether there is eaxctly one argument.
-  auto args_valid = !arguments.empty() && arguments.size() <= 1;
-  if (!args_valid || arguments[0].empty()) {
-    out("Wrong input.\n");
-    out("Usage: set_capture_interval INTERVAL");
-    return ReturnCode::Error;
-  }
-
-//  const auto interval = std::stoi(arguments[0]);
-//  AtomicTimedAccessStrategy::interval = std::chrono::milliseconds{interval};
 
   return ReturnCode::Ok;
 }

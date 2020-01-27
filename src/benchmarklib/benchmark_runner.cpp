@@ -200,10 +200,7 @@ void BenchmarkRunner::_benchmark_ordered() {
 
     const auto& name = _benchmark_item_runner->item_name(item_id);
     std::cout << "- Benchmarking " << name << std::endl;
-    // clear results
-    _results[item_id].successful_runs = {};
-    _results[item_id].unsuccessful_runs = {};
-    _results[item_id].duration = {};
+
     auto& result = _results[item_id];
 
     Assert(_currently_running_clients == 0, "Did not expect any clients to run at this time");

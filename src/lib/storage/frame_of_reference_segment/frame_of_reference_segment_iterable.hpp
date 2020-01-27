@@ -50,8 +50,6 @@ class FrameOfReferenceSegmentIterable : public PointAccessibleSegmentIterable<Fr
 
   size_t _on_size() const { return _segment.size(); }
 
-  const FrameOfReferenceSegment<T>& segment() const { return _segment; }
-
  private:
   const FrameOfReferenceSegment<T>& _segment;
 
@@ -75,8 +73,7 @@ class FrameOfReferenceSegmentIterable : public PointAccessibleSegmentIterable<Fr
           _chunk_offset{0u} {}
 
     // End iterator
-    explicit Iterator(OffsetValueIteratorT offset_value_it) : Iterator{{}, offset_value_it,
-                                                                                                   {}} {}
+    explicit Iterator(OffsetValueIteratorT offset_value_it) : Iterator{{}, offset_value_it, {}} {}
 
    private:
     friend class boost::iterator_core_access;  // grants the boost::iterator_facade access to the private interface
