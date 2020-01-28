@@ -3,7 +3,7 @@ function(add_plugin)
         PARSED_ARGS
         ""
         "NAME"
-        "SRCS;DEPS"
+        "SRCS;DEPS;LIBS"
         ${ARGN}
     )
     if(NOT PARSED_ARGS_NAME)
@@ -15,6 +15,8 @@ function(add_plugin)
     add_dependencies(${PARSED_ARGS_NAME} hyrise)
 
     include_directories(${CMAKE_BINARY_DIR})  # For provider.hpp
+
+    target_link_libraries(${PARSED_ARGS_NAME} ${PARSED_ARGS_LIBS})
 
     foreach(dep ${PARSED_ARGS_DEPS})
         add_dependencies(${PARSED_ARGS_NAME} ${dep})
@@ -31,8 +33,11 @@ endfunction(add_plugin)
 add_plugin(NAME MvccDeletePlugin SRCS mvcc_delete_plugin.cpp mvcc_delete_plugin.hpp)
 add_plugin(NAME hyriseTestPlugin SRCS test_plugin.cpp test_plugin.hpp)
 add_plugin(NAME hyriseTestNonInstantiablePlugin SRCS non_instantiable_plugin.cpp)
+include_directories(/usr/local/include)
+link_directories(/usr/local/lib)
 add_plugin(NAME AntiCachingPlugin SRCS anti_caching_plugin.cpp anti_caching_plugin.hpp knapsack_solver.cpp
-    knapsack_solver.hpp)
+    knapsack_solver.hpp persistent_memory_manager.cpp persistent_memory_manager.hpp persistent_memory_resource.cpp
+    persistent_memory_resource.hpp LIBS pmemobj)
 
 
 # We define TEST_PLUGIN_DIR to always load plugins from the correct directory for testing purposes

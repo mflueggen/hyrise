@@ -68,33 +68,32 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   void reset_access_statistics();
 
-  size_t memory_budget = 25ul * 1024ul * 1024ul;
+  size_t memory_budget = 1024ul * 1024ul * 1024ul;
 
  private:
 
   template <typename Functor>
   static void _for_all_segments(const std::map<std::string, std::shared_ptr<Table>>& tables, const Functor& functor);
-
-  static std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> _fetch_segments();
-
   std::vector<SegmentInfo> _fetch_current_statistics();
+  static std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> _fetch_segments();
 
   void _evaluate_statistics();
 
-  static float _compute_value(const SegmentInfo& segment_info);
-
   void _evict_segments();
+  std::vector<size_t> _determine_memory_segments();
+  static float _compute_value(const SegmentInfo& segment_info);
+  void _swap_segments(const std::unordered_set<SegmentID, SegmentIDHasher>& segment_ids_to_evict);
 
-  std::ofstream _log_file;
   void _log_line(const std::string& text);
 
+  std::ofstream _log_file;
+  size_t _memory_resource_handle;
   std::unordered_set<SegmentID, SegmentIDHasher> _evicted_segments;
 
   std::vector<TimestampSegmentInfoPair> _access_statistics;
   std::unique_ptr<PausableLoopThread> _evaluate_statistics_thread;
 
   constexpr static std::chrono::milliseconds REFRESH_STATISTICS_INTERVAL = std::chrono::milliseconds(10'000);
-
   const std::chrono::time_point<std::chrono::steady_clock> _initialization_time{std::chrono::steady_clock::now()};
 };
 
