@@ -3,7 +3,6 @@
 #include <ctime>
 #include <iostream>
 #include <unordered_map>
-#include <unordered_set>
 #include <numeric>
 
 #include "boost/format.hpp"
@@ -16,8 +15,7 @@ namespace opossum {
 namespace anticaching {
 
 bool SegmentID::operator==(const SegmentID& other) const {
-  return table_name == other.table_name && chunk_id == other.chunk_id && column_id == other.column_id &&
-         column_name == other.column_name;
+  return table_name == other.table_name && chunk_id == other.chunk_id && column_id == other.column_id;
 }
 
 size_t SegmentIDHasher::operator()(const SegmentID& segment_id) const {
@@ -25,7 +23,6 @@ size_t SegmentIDHasher::operator()(const SegmentID& segment_id) const {
   res = res * 31 + std::hash<std::string>()(segment_id.table_name);
   res = res * 31 + std::hash<ChunkID>()(segment_id.chunk_id);
   res = res * 31 + std::hash<ColumnID>()(segment_id.column_id);
-  res = res * 31 + std::hash<std::string>()(segment_id.column_name);
   return res;
 }
 
@@ -61,30 +58,64 @@ void AntiCachingPlugin::_evaluate_statistics() {
   _log_line("Evaluating statistics start");
 
   const auto timestamp = std::chrono::steady_clock::now();
+  // 1. Ermittle alle Segmente // Vielleicht doch nur _fetch_segments?
+  // Segment ID und Ptr
+  // SegmentID, segment_ptr
+  // 2. Übergebe Werte an Knapsack Solver.
+  // Bekomme indices zurück, die behalten werden sollen
+  // Mappe auf SegmentID. Mache daraus ein set.
+  // Iteriere über alle SegmentIDs. Falls in set und nicht evicted. alles gut.
+  // Falls in set und evicted -> Hauptspeicher
+  // Falls nicht in set und evicted -> alles ok.
+  // Falls nicht in set und nicht evicted -> evict.
+
+
   auto current_statistics = _fetch_current_statistics();
   if (!current_statistics.empty()) {
     _access_statistics.emplace_back(timestamp, std::move(current_statistics));
   }
 
-  // knapsack problem here
-  // MemoryBudget
-  // Wert und Speicherbedarf pro Segment bestimmen.
-  // Alle, die nicht in _access_statististics drin sind, haben den Wert 0
-  // eigentlich benötigen wir ein Liste mit Segmenten
-  // SegmentPtr, table_name, chunk_id, column_id
-  // die erzuegen wir hier
-  // Benötigen alle Segmente
-  // Wie speichere ich alle counter weg?
-  // loop über alle segmente, kopiere counter.
-  // Was passiert, wenn ein Segment hinzukommt oder entfernt wird
-
-  // gearbeitet wird auf segments und _access_statistics// konkreter auf AccessStatistics.back();
-  // values = zugriffe
-  // weights = size
-  // memory budget
-  // oder holen wir uns hier einfach genau die größen, die wir brauchen? Sprich ID, Zugriffe (ja)
   _evict_segments();
   _log_line("Evaluating statistics end");
+}
+
+template <typename Functor>
+void AntiCachingPlugin::_for_all_segments(const std::map<std::string, std::shared_ptr<Table>>& tables,
+  const Functor& functor) {
+
+  for (const auto&[table_name, table_ptr] : tables) {
+    for (auto chunk_id = ChunkID{0}, chunk_count = table_ptr->chunk_count(); chunk_id < chunk_count; ++chunk_id) {
+      const auto& chunk_ptr = table_ptr->get_chunk(chunk_id);
+      for (auto column_id = ColumnID{0}, column_count = static_cast<ColumnID>(chunk_ptr->column_count());
+           column_id < column_count; ++column_id) {
+        const auto& column_name = table_ptr->column_name(column_id);
+        functor(std::move(SegmentID{table_name, chunk_id, column_id, column_name}),
+          std::move(chunk_ptr->get_segment(column_id)));
+      }
+    }
+  }
+}
+
+std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> AntiCachingPlugin::_fetch_segments() {
+  std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> segments;
+  _for_all_segments(Hyrise::get().storage_manager.tables(),
+    [&segments](SegmentID segment_id, std::shared_ptr<BaseSegment> segment_ptr) {
+    segments.emplace_back(std::move(segment_id), std::move(segment_ptr));
+  });
+  return segments;
+}
+
+std::vector<SegmentInfo> AntiCachingPlugin::_fetch_current_statistics() {
+  std::vector<SegmentInfo> access_statistics;
+  const auto segments = AntiCachingPlugin::_fetch_segments();
+  access_statistics.reserve(segments.size());
+  for (const auto& segment_id_segment_ptr_pair : segments) {
+    access_statistics.emplace_back(segment_id_segment_ptr_pair.first,
+                                   segment_id_segment_ptr_pair.second->memory_usage(MemoryUsageCalculationMode::Sampled),
+                                   segment_id_segment_ptr_pair.second->size(),
+                                   segment_id_segment_ptr_pair.second->access_counter.counter());
+  }
+  return access_statistics;
 }
 
 void AntiCachingPlugin::_evict_segments() {
@@ -93,50 +124,57 @@ void AntiCachingPlugin::_evict_segments() {
     return;
   }
 
-  const auto& access_statistics = _access_statistics.back().second;
-  // values ermitteln
+  const std::vector<SegmentInfo>& access_statistics = _access_statistics.back().second;
+
   std::vector<float> values(access_statistics.size());
   std::vector<size_t> memory_usages(access_statistics.size());
-  // initialized here, will be uses later to output evicted segments
-  std::unordered_set<size_t> evicted_indices;
+
+  // Initialize indices_to_evict with all indices. The difference with indices_to_keep will be computed later.
+  std::unordered_set<size_t> indices_to_evict;
   for (size_t index = 0, end = access_statistics.size(); index < end; ++index) {
     const auto& segment_info = access_statistics[index];
     values[index] = _compute_value(segment_info);
     memory_usages[index] = segment_info.memory_usage;
-    evicted_indices.emplace(index);
+    indices_to_evict.emplace(index);
   }
 
-  const auto selected_indices = KnapsackSolver::solve(memory_budget, values, memory_usages);
-
-  // knapsack solver ausführen
-  // printen, was evicted wurde.
-  const auto total_size = std::accumulate(memory_usages.cbegin(), memory_usages.cend(), 0);
-  const auto selected_size = std::accumulate(selected_indices.cbegin(), selected_indices.cend(), 0,
-                                             [&memory_usages](const size_t sum, const size_t index) {
-                                               return sum + memory_usages[index];
-                                             });
-
-  for (const auto index : selected_indices) {
-    evicted_indices.erase(index);
+  const std::vector<size_t> indices_to_keep = KnapsackSolver::solve(memory_budget, values, memory_usages);
+  for (const auto index : indices_to_keep) {
+    indices_to_evict.erase(index);
   }
-  DebugAssert(evicted_indices.size() == access_statistics.size() - selected_indices.size(),
-              "|evicted_indices| should be equal to total_size - selected_size.");
-  const auto bytes_in_mb = 1024.0f * 1024.0f;
-  const auto evicted_memory = ((total_size - selected_size) / bytes_in_mb);
-  _log_line((boost::format(
-    "%d of %d segments evicted. %f MB of %f MB evicted. %f%% of memory budget used (memory budget: %f MB).") %
-             (access_statistics.size() - selected_indices.size()) %
-             access_statistics.size() %
-             evicted_memory %
-             (total_size / bytes_in_mb) %
-             (100.0f * selected_size / memory_budget) %
-             (memory_budget / bytes_in_mb)).str());
-  for (const auto index : evicted_indices) {
+
+  // an dieser Stelle findet nun der eviction process statt.
+
+
+
+
+  for (const auto index : indices_to_evict) {
     const auto& segment_info = access_statistics[index];
     _log_line((boost::format("%s.%s (chunk_id: %d, access_count; %d) evicted.") %
                segment_info.segment_id.table_name % segment_info.segment_id.column_name %
                segment_info.segment_id.chunk_id % segment_info.access_counter.sum()).str());
   }
+
+  // print output information
+  const auto total_size = std::accumulate(memory_usages.cbegin(), memory_usages.cend(), 0);
+  const auto selected_size = std::accumulate(indices_to_keep.cbegin(), indices_to_keep.cend(), 0,
+                                             [&memory_usages](const size_t sum, const size_t index) {
+                                               return sum + memory_usages[index];
+                                             });
+
+
+  DebugAssert(indices_to_evict.size() == access_statistics.size() - indices_to_keep.size(),
+              "|evicted_indices| should be equal to total_size - selected_size.");
+  const auto bytes_in_mb = 1024.0f * 1024.0f;
+  const auto evicted_memory = ((total_size - selected_size) / bytes_in_mb);
+  _log_line((boost::format(
+    "%d of %d segments evicted. %f MB of %f MB evicted. %f%% of memory budget used (memory budget: %f MB).") %
+             (access_statistics.size() - indices_to_keep.size()) %
+             access_statistics.size() %
+             evicted_memory %
+             (total_size / bytes_in_mb) %
+             (100.0f * selected_size / memory_budget) %
+             (memory_budget / bytes_in_mb)).str());
 }
 
 float AntiCachingPlugin::_compute_value(const SegmentInfo& segment_info) {
@@ -152,36 +190,6 @@ float AntiCachingPlugin::_compute_value(const SegmentInfo& segment_info) {
          counter.iterator_increasing_access + seq_increasing_access_factor +
          counter.iterator_random_access * rnd_access_factor +
          counter.other * rnd_access_factor + counter.dictionary_access * dictionary_access_factor;
-}
-
-std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> AntiCachingPlugin::_fetch_segments() {
-  std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> segments;
-  const auto& tables = Hyrise::get().storage_manager.tables();
-  for (const auto&[table_name, table_ptr] : tables) {
-    for (auto chunk_id = ChunkID{0}, chunk_count = table_ptr->chunk_count(); chunk_id < chunk_count; ++chunk_id) {
-      const auto& chunk_ptr = table_ptr->get_chunk(chunk_id);
-      for (auto column_id = ColumnID{0}, column_count = static_cast<ColumnID>(chunk_ptr->column_count());
-           column_id < column_count; ++column_id) {
-        const auto& column_name = table_ptr->column_name(column_id);
-        segments.emplace_back(SegmentID{table_name, chunk_id, column_id, column_name},
-                              chunk_ptr->get_segment(column_id));
-      }
-    }
-  }
-  return segments;
-}
-
-std::vector<SegmentInfo> AntiCachingPlugin::_fetch_current_statistics() {
-  std::vector<SegmentInfo> access_statistics;
-  const auto segments = AntiCachingPlugin::_fetch_segments();
-  access_statistics.reserve(segments.size());
-  for (const auto& segment_id_segment_ptr_pair : segments) {
-    access_statistics.emplace_back(segment_id_segment_ptr_pair.first,
-                                   segment_id_segment_ptr_pair.second->memory_usage(MemoryUsageCalculationMode::Sampled),
-                                   segment_id_segment_ptr_pair.second->size(),
-                                   segment_id_segment_ptr_pair.second->access_counter.counter());
-  }
-  return access_statistics;
 }
 
 void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta_data,

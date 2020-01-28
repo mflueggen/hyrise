@@ -2,7 +2,9 @@
 
 #include <chrono>
 #include <fstream>
+#include <map>
 #include <memory>
+#include <unordered_set>
 #include <utility>
 #include <sstream>
 #include <string>
@@ -18,8 +20,7 @@ namespace opossum {
 namespace anticaching {
 struct SegmentID {
   SegmentID(const std::string& table_name, const ChunkID chunk_id, const ColumnID column_id,
-            const std::string& column_name)
-    : table_name{table_name}, chunk_id{chunk_id}, column_id{column_id}, column_name{column_name} {}
+    const std::string& column_name) : table_name{table_name}, chunk_id{chunk_id}, column_id{column_id} {}
 
   std::string table_name;
   ChunkID chunk_id;
@@ -70,6 +71,10 @@ class AntiCachingPlugin : public AbstractPlugin {
   size_t memory_budget = 25ul * 1024ul * 1024ul;
 
  private:
+
+  template <typename Functor>
+  static void _for_all_segments(const std::map<std::string, std::shared_ptr<Table>>& tables, const Functor& functor);
+
   static std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> _fetch_segments();
 
   std::vector<SegmentInfo> _fetch_current_statistics();
@@ -82,6 +87,8 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   std::ofstream _log_file;
   void _log_line(const std::string& text);
+
+  std::unordered_set<SegmentID, SegmentIDHasher> _evicted_segments;
 
   std::vector<TimestampSegmentInfoPair> _access_statistics;
   std::unique_ptr<PausableLoopThread> _evaluate_statistics_thread;
