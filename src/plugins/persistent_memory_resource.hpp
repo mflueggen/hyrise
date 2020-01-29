@@ -1,8 +1,8 @@
 #pragma once
 
 #include <unordered_map>
-#include <memory_resource>
 
+#include "boost/container/pmr/memory_resource.hpp"
 #include "libpmemobj.h"
 #include "libpmemobj++/persistent_ptr.hpp"
 #include "libpmemobj++/pool.hpp"
@@ -11,7 +11,7 @@
 namespace opossum {
 
 // not copyable, movable
-class PersistentMemoryResource : private Noncopyable, public std::pmr::memory_resource {
+class PersistentMemoryResource : private Noncopyable, public boost::container::pmr::memory_resource {
  public:
   PersistentMemoryResource(const std::string& name, size_t pool_size);
 
@@ -27,7 +27,7 @@ class PersistentMemoryResource : private Noncopyable, public std::pmr::memory_re
 
   void do_deallocate(void* p, std::size_t bytes, std::size_t alignment) noexcept override;
 
-  bool do_is_equal(const memory_resource& __other) const noexcept override;
+  bool do_is_equal(const boost::container::pmr::memory_resource& other) const noexcept override;
 };
 
 }  // namespace opossum

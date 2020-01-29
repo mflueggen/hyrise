@@ -1,7 +1,5 @@
 #include "persistent_memory_manager.hpp"
 
-#include <filesystem>
-
 namespace opossum {
 
 PersistentMemoryManager& opossum::PersistentMemoryManager::get() {

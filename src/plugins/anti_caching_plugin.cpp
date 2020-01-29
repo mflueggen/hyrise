@@ -196,12 +196,18 @@ float AntiCachingPlugin::_compute_value(const SegmentInfo& segment_info) {
 
 void AntiCachingPlugin::_swap_segments(const std::unordered_set<SegmentID, SegmentIDHasher>& segment_ids_to_evict) {
   _log_line("swapping segments");
+  auto& persistent_memory_resource = PersistentMemoryManager::get().get(_memory_resource_handle);
   // TODO: Locking?
   _for_all_segments(Hyrise::get().storage_manager.tables(), [&](const SegmentID segment_id,
                                                                 const std::shared_ptr<BaseSegment> segment_ptr) {
     if (segment_ids_to_evict.contains(segment_id)) {
       if (!_evicted_segments.contains(segment_id)) {
-        // evict.
+        // Kopie anlegen
+        auto copy_of_segment = segment_ptr->copy_using_allocator(&persistent_memory_resource);
+        auto table_ptr = Hyrise::get().storage_manager.get_table(segment_id.table_name);
+        auto chunk_ptr = table_ptr->get_chunk(segment_id.chunk_id);
+        chunk_ptr->replace_segment(segment_id.column_id, copy_of_segment);
+
         _evicted_segments.insert(segment_id);
         _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d) evicted.") %
                    segment_id.table_name % segment_id.column_name %
@@ -212,6 +218,11 @@ void AntiCachingPlugin::_swap_segments(const std::unordered_set<SegmentID, Segme
       auto evicted_segment = _evicted_segments.find(segment_id);
       if (evicted_segment != _evicted_segments.cend()) {
         // move into memory
+        auto copy_of_segment = segment_ptr->copy_using_allocator({});
+        auto table_ptr = Hyrise::get().storage_manager.get_table(segment_id.table_name);
+        auto chunk_ptr = table_ptr->get_chunk(segment_id.chunk_id);
+        chunk_ptr->replace_segment(segment_id.column_id, copy_of_segment);
+
         _evicted_segments.erase(evicted_segment);
         _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d) moved to memory.") %
                    segment_id.table_name % segment_id.column_name %

@@ -33,8 +33,8 @@ void PersistentMemoryResource::do_deallocate(void* p, std::size_t bytes, std::si
     });
 }
 
-bool PersistentMemoryResource::do_is_equal(const std::pmr::memory_resource& __other) const noexcept {
-  return true;
+bool PersistentMemoryResource::do_is_equal(const boost::container::pmr::memory_resource& other) const noexcept {
+  return (this == &other);
 }
 
 }  // namespace opossum
