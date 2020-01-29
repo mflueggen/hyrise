@@ -1,5 +1,7 @@
 #include "persistent_memory_manager.hpp"
 
+#include <filesystem>
+
 namespace opossum {
 
 PersistentMemoryManager& opossum::PersistentMemoryManager::get() {
@@ -9,13 +11,13 @@ PersistentMemoryManager& opossum::PersistentMemoryManager::get() {
 
 size_t PersistentMemoryManager::create(size_t pool_size) {
     auto handle = _memory_resources.size();
-    _memory_resources.emplace_back(
-      std::make_shared<PersistentMemoryResource>("pool" + std::to_string(handle), pool_size));
+    const auto pool_name = "pool" + std::to_string(handle);
+    _memory_resources.emplace_back(std::make_unique<PersistentMemoryResource>(pool_name, pool_size));
     return handle;
 }
 
-std::shared_ptr<PersistentMemoryResource> PersistentMemoryManager::get(size_t handle) const {
-    return _memory_resources[handle];
+PersistentMemoryResource& PersistentMemoryManager::get(size_t handle) const {
+    return *_memory_resources[handle];
 }
 
 }  // namespace opossum

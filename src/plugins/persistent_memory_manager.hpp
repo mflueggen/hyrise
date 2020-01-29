@@ -1,7 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
+#include "libpmemobj++/pool.hpp"
 #include "persistent_memory_resource.hpp"
 #include "types.hpp"
 
@@ -13,10 +15,10 @@ class PersistentMemoryManager : private Noncopyable {
 
   size_t create(size_t pool_size);
 
-  std::shared_ptr<PersistentMemoryResource> get(size_t handle) const;
+  PersistentMemoryResource& get(size_t handle) const;
 
  private:
-  std::vector <std::shared_ptr<PersistentMemoryResource>> _memory_resources;
+  std::vector<std::unique_ptr<PersistentMemoryResource>> _memory_resources;
 };
 
 }  // namespace opossum

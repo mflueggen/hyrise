@@ -6,14 +6,18 @@
 #include "libpmemobj.h"
 #include "libpmemobj++/persistent_ptr.hpp"
 #include "libpmemobj++/pool.hpp"
+#include "types.hpp"
 
 namespace opossum {
 
-class PersistentMemoryResource : public std::pmr::memory_resource {
+// not copyable, movable
+class PersistentMemoryResource : private Noncopyable, public std::pmr::memory_resource {
  public:
-  PersistentMemoryResource(const std::string& pool_name, size_t pool_size);
+  PersistentMemoryResource(const std::string& name, size_t pool_size);
 
-  const std::string pool_name;
+  const std::string name;
+  const size_t pool_size;
+
  private:
   struct root {};
   pmem::obj::pool<struct root> _pool;
