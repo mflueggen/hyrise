@@ -43,7 +43,7 @@ std::unique_ptr<AbstractSegmentAccessor<T>> create_segment_accessor(const std::s
 template <typename T, typename SegmentType>
 class SegmentAccessor final : public AbstractSegmentAccessor<T> {
  public:
-  explicit SegmentAccessor(const SegmentType& segment) : AbstractSegmentAccessor<T>{}, _segment{segment} {
+  explicit SegmentAccessor(const SegmentType& segment) : AbstractSegmentAccessor<T>{}, _accesses{0}, _segment{segment} {
     _segment.access_counter.on_accessor_create(_segment.size());
   }
 
@@ -104,7 +104,7 @@ template <typename T, typename Segment>
 class SingleChunkReferenceSegmentAccessor final : public AbstractSegmentAccessor<T> {
  public:
   explicit SingleChunkReferenceSegmentAccessor(const PosList& pos_list, const ChunkID chunk_id, const Segment& segment)
-      : _pos_list{pos_list}, _chunk_id(chunk_id), _segment(segment) {
+      : _accesses{0}, _pos_list{pos_list}, _chunk_id(chunk_id), _segment(segment) {
     _segment.access_counter.on_accessor_create(_segment.size());
   }
 

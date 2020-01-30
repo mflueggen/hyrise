@@ -11,9 +11,9 @@
 namespace opossum {
 
 // not copyable, movable
-class PersistentMemoryResource : private Noncopyable, public boost::container::pmr::memory_resource {
+class PmemObjMemoryResource : private Noncopyable, public boost::container::pmr::memory_resource {
  public:
-  PersistentMemoryResource(const std::string& name, size_t pool_size);
+  PmemObjMemoryResource(const std::string& name, size_t pool_size);
 
   const std::string name;
   const size_t pool_size;

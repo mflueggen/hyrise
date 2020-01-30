@@ -43,6 +43,7 @@ Chunk::Chunk(Segments segments, const std::shared_ptr<MvccData>& mvcc_data,
 bool Chunk::is_mutable() const { return _is_mutable; }
 
 void Chunk::replace_segment(size_t column_id, const std::shared_ptr<BaseSegment>& segment) {
+  // compare and swap
   std::atomic_store(&_segments.at(column_id), segment);
 }
 

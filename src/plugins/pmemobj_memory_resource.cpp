@@ -1,11 +1,11 @@
-#include "persistent_memory_resource.hpp"
+#include "pmemobj_memory_resource.hpp"
 
 #include "libpmemobj++/make_persistent.hpp"
 #include "libpmemobj++/transaction.hpp"
 
 namespace opossum {
 
-PersistentMemoryResource::PersistentMemoryResource(const std::string& name, size_t pool_size)
+PmemObjMemoryResource::PmemObjMemoryResource(const std::string& name, size_t pool_size)
   : name{name}, pool_size(pool_size)
 {
   // if pool exists, we delete it.
@@ -13,7 +13,7 @@ PersistentMemoryResource::PersistentMemoryResource(const std::string& name, size
   _pool = pmem::obj::pool<root>::create(name, "layout", pool_size, S_IWRITE | S_IREAD);
 }
 
-void* PersistentMemoryResource::do_allocate(size_t bytes, size_t alignment) {
+void* PmemObjMemoryResource::do_allocate(size_t bytes, size_t alignment) {
   void* ptr = nullptr;
     std::cout << "allocating " << bytes << " bytes in pool " << 0 << "\n";
     pmem::obj::transaction::run(_pool, [&] {
@@ -24,7 +24,7 @@ void* PersistentMemoryResource::do_allocate(size_t bytes, size_t alignment) {
   return ptr;
 }
 
-void PersistentMemoryResource::do_deallocate(void* p, std::size_t bytes, std::size_t alignment) noexcept {
+void PmemObjMemoryResource::do_deallocate(void* p, std::size_t bytes, std::size_t alignment) noexcept {
     std::cout << "deallocation of " << bytes << " requested for pool " << 0 << "\n";
     pmem::obj::transaction::run(_pool, [&] {
       pmem::obj::persistent_ptr<char[]>* ptr = this->_pointers[p];
@@ -33,7 +33,7 @@ void PersistentMemoryResource::do_deallocate(void* p, std::size_t bytes, std::si
     });
 }
 
-bool PersistentMemoryResource::do_is_equal(const boost::container::pmr::memory_resource& other) const noexcept {
+bool PmemObjMemoryResource::do_is_equal(const boost::container::pmr::memory_resource& other) const noexcept {
   return (this == &other);
 }
 

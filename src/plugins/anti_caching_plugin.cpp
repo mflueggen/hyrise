@@ -2,7 +2,6 @@
 
 #include <ctime>
 #include <iostream>
-#include <unordered_map>
 #include <numeric>
 
 #include "boost/format.hpp"
@@ -82,18 +81,19 @@ void AntiCachingPlugin::_evaluate_statistics() {
 }
 
 // TODO: Probably not needed?
-template <typename Functor>
+template<typename Functor>
 void AntiCachingPlugin::_for_all_segments(const std::map<std::string, std::shared_ptr<Table>>& tables,
-  const Functor& functor) {
+                                          bool include_mutable_chunks, const Functor& functor) {
 
   for (const auto&[table_name, table_ptr] : tables) {
     for (auto chunk_id = ChunkID{0}, chunk_count = table_ptr->chunk_count(); chunk_id < chunk_count; ++chunk_id) {
       const auto& chunk_ptr = table_ptr->get_chunk(chunk_id);
+      if (!include_mutable_chunks && chunk_ptr->is_mutable()) continue;
       for (auto column_id = ColumnID{0}, column_count = static_cast<ColumnID>(chunk_ptr->column_count());
            column_id < column_count; ++column_id) {
         const auto& column_name = table_ptr->column_name(column_id);
         functor(std::move(SegmentID{table_name, chunk_id, column_id, column_name}),
-          std::move(chunk_ptr->get_segment(column_id)));
+                std::move(chunk_ptr->get_segment(column_id)));
       }
     }
   }
@@ -101,10 +101,10 @@ void AntiCachingPlugin::_for_all_segments(const std::map<std::string, std::share
 
 std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> AntiCachingPlugin::_fetch_segments() {
   std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> segments;
-  _for_all_segments(Hyrise::get().storage_manager.tables(),
-    [&segments](SegmentID segment_id, std::shared_ptr<BaseSegment> segment_ptr) {
-    segments.emplace_back(std::move(segment_id), std::move(segment_ptr));
-  });
+  _for_all_segments(Hyrise::get().storage_manager.tables(), false,
+                    [&segments](SegmentID segment_id, std::shared_ptr<BaseSegment> segment_ptr) {
+                      segments.emplace_back(std::move(segment_id), std::move(segment_ptr));
+                    });
   return segments;
 }
 
@@ -114,7 +114,8 @@ std::vector<SegmentInfo> AntiCachingPlugin::_fetch_current_statistics() {
   access_statistics.reserve(segments.size());
   for (const auto& segment_id_segment_ptr_pair : segments) {
     access_statistics.emplace_back(segment_id_segment_ptr_pair.first,
-                                   segment_id_segment_ptr_pair.second->memory_usage(MemoryUsageCalculationMode::Sampled),
+                                   segment_id_segment_ptr_pair.second->memory_usage(
+                                     MemoryUsageCalculationMode::Sampled),
                                    segment_id_segment_ptr_pair.second->size(),
                                    segment_id_segment_ptr_pair.second->access_counter.counter());
   }
@@ -198,12 +199,27 @@ void AntiCachingPlugin::_swap_segments(const std::unordered_set<SegmentID, Segme
   _log_line("swapping segments");
   auto& persistent_memory_resource = PersistentMemoryManager::get().get(_memory_resource_handle);
   // TODO: Locking?
-  _for_all_segments(Hyrise::get().storage_manager.tables(), [&](const SegmentID segment_id,
-                                                                const std::shared_ptr<BaseSegment> segment_ptr) {
+  _for_all_segments(Hyrise::get().storage_manager.tables(), false, [&](const SegmentID segment_id,
+                                                                       const std::shared_ptr<BaseSegment> segment_ptr) {
+
+    if (segment_ptr->access_counter.counter().sum() > 10'000'000'000ul) {
+      std::cout << "AccessCount too big.\n";
+    }
+
     if (segment_ids_to_evict.contains(segment_id)) {
       if (!_evicted_segments.contains(segment_id)) {
-        // Kopie anlegen
-        auto copy_of_segment = segment_ptr->copy_using_allocator(&persistent_memory_resource);
+        // ggf. Kopie anlegen
+        auto copy_of_segment = std::shared_ptr<BaseSegment>{nullptr};
+        auto persisted_segment_it = _persisted_segments.find(segment_id);
+        if (persisted_segment_it != _persisted_segments.cend()) {
+          copy_of_segment = (*persisted_segment_it).second;
+        } else {
+          copy_of_segment = segment_ptr->copy_using_allocator(&persistent_memory_resource);
+          _persisted_segments.insert(persisted_segment_it, {segment_id, copy_of_segment});
+          _log_line((boost::format("%s.%s (chunk_id: %d) persisted.") %
+                     segment_id.table_name % segment_id.column_name %
+                     segment_id.chunk_id).str());
+        }
         auto table_ptr = Hyrise::get().storage_manager.get_table(segment_id.table_name);
         auto chunk_ptr = table_ptr->get_chunk(segment_id.chunk_id);
         chunk_ptr->replace_segment(segment_id.column_id, copy_of_segment);
@@ -230,6 +246,7 @@ void AntiCachingPlugin::_swap_segments(const std::unordered_set<SegmentID, Segme
       }
     }
   });
+  _log_line("segments swapped.");
 }
 
 void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta_data,
@@ -272,6 +289,7 @@ void AntiCachingPlugin::_log_line(const std::string& text) {
   const auto timestamp = std::time(nullptr);
   const auto local_time = std::localtime(&timestamp);
   _log_file << std::put_time(local_time, "%d.%m.%Y %H:%M:%S") << ", " << text << '\n';
+  _log_file.flush();
 }
 
 EXPORT_PLUGIN(AntiCachingPlugin)

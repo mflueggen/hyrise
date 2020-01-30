@@ -1,10 +1,8 @@
 #pragma once
 
 #include <memory>
-#include <utility>
 
-#include "libpmemobj++/pool.hpp"
-#include "persistent_memory_resource.hpp"
+#include "boost/container/pmr/memory_resource.hpp"
 #include "types.hpp"
 
 namespace opossum {
@@ -15,10 +13,10 @@ class PersistentMemoryManager : private Noncopyable {
 
   size_t create(size_t pool_size);
 
-  PersistentMemoryResource& get(size_t handle) const;
+  boost::container::pmr::memory_resource& get(size_t handle) const;
 
  private:
-  std::vector<std::unique_ptr<PersistentMemoryResource>> _memory_resources;
+  std::vector<std::unique_ptr<boost::container::pmr::memory_resource>> _memory_resources;
 };
 
 }  // namespace opossum

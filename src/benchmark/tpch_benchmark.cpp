@@ -132,7 +132,6 @@ int main(int argc, char* argv[]) {
   }
 
   // AntiCachingPlugin laden.
-  Hyrise::get().plugin_manager.load_plugin("lib/libAntiCachingPlugin.so");
   // Reset der Counter durchführen.
 
   benchmark_runner->run();

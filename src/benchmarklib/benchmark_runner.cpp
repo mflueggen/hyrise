@@ -195,6 +195,7 @@ void BenchmarkRunner::_benchmark_shuffled() {
 
 void BenchmarkRunner::_benchmark_ordered() {
   SegmentAccessCounter::reset(Hyrise::get().storage_manager.tables());
+  Hyrise::get().plugin_manager.load_plugin("lib/libAntiCachingPlugin.so");
   for (const auto& item_id : _benchmark_item_runner->items()) {
     _warmup(item_id);
 

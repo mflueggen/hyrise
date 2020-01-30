@@ -4,6 +4,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <sstream>
@@ -20,7 +21,8 @@ namespace opossum {
 namespace anticaching {
 struct SegmentID {
   SegmentID(const std::string& table_name, const ChunkID chunk_id, const ColumnID column_id,
-    const std::string& column_name) : table_name{table_name}, chunk_id{chunk_id}, column_id{column_id} {}
+            const std::string& column_name) : table_name{table_name}, chunk_id{chunk_id}, column_id{column_id},
+                                              column_name{column_name} {}
 
   std::string table_name;
   ChunkID chunk_id;
@@ -54,6 +56,7 @@ class AntiCachingPlugin : public AbstractPlugin {
 
  public:
   AntiCachingPlugin();
+
   ~AntiCachingPlugin();
 
   const std::string description() const;
@@ -68,20 +71,26 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   void reset_access_statistics();
 
-  size_t memory_budget = 1024ul * 1024ul * 1024ul;
+  size_t memory_budget = 5ul * 1024ul * 1024ul;
 
  private:
 
-  template <typename Functor>
-  static void _for_all_segments(const std::map<std::string, std::shared_ptr<Table>>& tables, const Functor& functor);
+  template<typename Functor>
+  static void _for_all_segments(const std::map<std::string, std::shared_ptr<Table>>& tables,
+    bool include_mutable_chunks, const Functor& functor);
+
   std::vector<SegmentInfo> _fetch_current_statistics();
+
   static std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> _fetch_segments();
 
   void _evaluate_statistics();
 
   void _evict_segments();
+
   std::vector<size_t> _determine_memory_segments();
+
   static float _compute_value(const SegmentInfo& segment_info);
+
   void _swap_segments(const std::unordered_set<SegmentID, SegmentIDHasher>& segment_ids_to_evict);
 
   void _log_line(const std::string& text);
@@ -89,6 +98,7 @@ class AntiCachingPlugin : public AbstractPlugin {
   std::ofstream _log_file;
   size_t _memory_resource_handle;
   std::unordered_set<SegmentID, SegmentIDHasher> _evicted_segments;
+  std::unordered_map<SegmentID, std::shared_ptr<BaseSegment>, SegmentIDHasher> _persisted_segments;
 
   std::vector<TimestampSegmentInfoPair> _access_statistics;
   std::unique_ptr<PausableLoopThread> _evaluate_statistics_thread;
