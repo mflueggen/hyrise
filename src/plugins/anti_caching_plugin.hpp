@@ -65,7 +65,7 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   void stop();
 
-  using TimestampSegmentInfoPair = std::pair<const std::chrono::time_point<std::chrono::steady_clock>, std::vector<SegmentInfo>>;
+  using TimestampSegmentInfosPair = std::pair<const std::chrono::time_point<std::chrono::steady_clock>, std::vector<SegmentInfo>>;
 
   void export_access_statistics(const std::string& path_to_meta_data, const std::string& path_to_access_statistics);
 
@@ -77,7 +77,7 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   template<typename Functor>
   static void _for_all_segments(const std::map<std::string, std::shared_ptr<Table>>& tables,
-    bool include_mutable_chunks, const Functor& functor);
+                                bool include_mutable_chunks, const Functor& functor);
 
   std::vector<SegmentInfo> _fetch_current_statistics();
 
@@ -87,11 +87,14 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   void _evict_segments();
 
-  std::vector<size_t> _determine_memory_segments();
+  std::vector<SegmentID> _determine_in_memory_segments();
+
+  static std::vector<SegmentInfo>
+  _select_segment_information_for_value_computation(const std::vector<TimestampSegmentInfosPair>& access_statistics);
 
   static float _compute_value(const SegmentInfo& segment_info);
 
-  void _swap_segments(const std::unordered_set<SegmentID, SegmentIDHasher>& segment_ids_to_evict);
+  void _swap_segments(const std::vector<SegmentID>& in_memory_segment_ids);
 
   void _log_line(const std::string& text);
 
@@ -100,7 +103,7 @@ class AntiCachingPlugin : public AbstractPlugin {
   std::unordered_set<SegmentID, SegmentIDHasher> _evicted_segments;
   std::unordered_map<SegmentID, std::shared_ptr<BaseSegment>, SegmentIDHasher> _persisted_segments;
 
-  std::vector<TimestampSegmentInfoPair> _access_statistics;
+  std::vector<TimestampSegmentInfosPair> _access_statistics;
   std::unique_ptr<PausableLoopThread> _evaluate_statistics_thread;
 
   constexpr static std::chrono::milliseconds REFRESH_STATISTICS_INTERVAL = std::chrono::milliseconds(10'000);

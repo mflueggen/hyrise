@@ -4,6 +4,7 @@
 #include <iostream>
 #include <numeric>
 
+#include "third_party/jemalloc/include/jemalloc/jemalloc.h"
 #include "boost/format.hpp"
 #include "hyrise.hpp"
 #include "knapsack_solver.hpp"
@@ -128,37 +129,35 @@ void AntiCachingPlugin::_evict_segments() {
     return;
   }
 
-  const std::vector<SegmentInfo>& access_statistics = _access_statistics.back().second;
-  const std::vector<size_t> indices_to_keep = _determine_memory_segments();
-
-  std::unordered_set<size_t> indices_to_evict;
-  for (size_t index = 0, end = access_statistics.size(); index < end; ++index) {
-    indices_to_evict.insert(indices_to_evict.end(), index);
-  }
-  for (const auto index : indices_to_keep) { indices_to_evict.erase(index); }
-  DebugAssert(indices_to_evict.size() == access_statistics.size() - indices_to_keep.size(),
-              "|indices_to_evict| should be equal to access_statistics.size() - indices_to_keep.size().");
-
-  std::unordered_set<SegmentID, SegmentIDHasher> segment_ids_to_evict;
-  for (const auto index : indices_to_evict) {
-    segment_ids_to_evict.insert(access_statistics[index].segment_id);
-  }
-
-  _swap_segments(segment_ids_to_evict);
+  const auto in_memory_segments = _determine_in_memory_segments();
+  _swap_segments(in_memory_segments);
 }
 
-std::vector<size_t> AntiCachingPlugin::_determine_memory_segments() {
-  const std::vector<SegmentInfo>& access_statistics = _access_statistics.back().second;
-  std::vector<float> values(access_statistics.size());
-  std::vector<size_t> memory_usages(access_statistics.size());
+/**
+ * Determines the indices of segments (in _access_statistics) that shall remain in memory.
+ * @return returns set of segment ids?
+ */
+std::vector<SegmentID> AntiCachingPlugin::_determine_in_memory_segments() {
+  const auto segment_information = _select_segment_information_for_value_computation(_access_statistics);
 
-  for (size_t index = 0, end = access_statistics.size(); index < end; ++index) {
-    const auto& segment_info = access_statistics[index];
+  // Segment ID, counters
+  std::vector<float> values(segment_information.size());
+  std::vector<size_t> memory_usages(segment_information.size());
+
+  for (size_t index = 0, end = segment_information.size(); index < end; ++index) {
+    const auto& segment_info = segment_information[index];
     values[index] = _compute_value(segment_info);
     memory_usages[index] = segment_info.memory_usage;
   }
 
   auto indices_of_memory_segments = KnapsackSolver::solve(memory_budget, values, memory_usages);
+
+  std::vector<SegmentID> segment_ids;
+  segment_ids.reserve(indices_of_memory_segments.size());
+
+  for (const auto index : indices_of_memory_segments) {
+    segment_ids.push_back(segment_information[index].segment_id);
+  }
 
   const auto total_size = std::accumulate(memory_usages.cbegin(), memory_usages.cend(), 0);
   const auto selected_size = std::accumulate(indices_of_memory_segments.cbegin(), indices_of_memory_segments.cend(), 0,
@@ -170,14 +169,43 @@ std::vector<size_t> AntiCachingPlugin::_determine_memory_segments() {
   const auto evicted_memory = ((total_size - selected_size) / bytes_in_mb);
   _log_line((boost::format(
     "%d of %d segments evicted. %f MB of %f MB evicted. %f%% of memory budget used (memory budget: %f MB).") %
-             (access_statistics.size() - indices_of_memory_segments.size()) %
-             access_statistics.size() %
+             (segment_information.size() - indices_of_memory_segments.size()) %
+             segment_information.size() %
              evicted_memory %
              (total_size / bytes_in_mb) %
              (100.0f * selected_size / memory_budget) %
              (memory_budget / bytes_in_mb)).str());
 
-  return indices_of_memory_segments;
+  return segment_ids;
+}
+
+std::vector<SegmentInfo>
+AntiCachingPlugin::_select_segment_information_for_value_computation(const std::vector<TimestampSegmentInfosPair>& access_statistics) {
+  if (access_statistics.empty()) return {};
+  const auto& current = access_statistics.back().second;
+  if (access_statistics.size() == 1) return current;
+
+  const auto& prev = (access_statistics.cend() - 2)->second;
+
+  std::unordered_map<SegmentID, SegmentInfo, SegmentIDHasher> segment_infos;
+
+  for (const auto& segment_info : prev) {
+    segment_infos.insert({segment_info.segment_id, segment_info});
+  }
+
+  std::vector<SegmentInfo> return_vector;
+  return_vector.reserve(current.size());
+
+  for (const auto& segment_info : current) {
+    const auto& prev_segment_info = segment_infos.find(segment_info.segment_id);
+    if (prev_segment_info != segment_infos.cend()) {
+      return_vector.emplace_back(segment_info.segment_id, segment_info.memory_usage, segment_info.size,
+                                 segment_info.access_counter - prev_segment_info->second.access_counter);
+    } else {
+      return_vector.push_back(segment_info);
+    }
+  }
+  return return_vector;
 }
 
 float AntiCachingPlugin::_compute_value(const SegmentInfo& segment_info) {
@@ -195,8 +223,22 @@ float AntiCachingPlugin::_compute_value(const SegmentInfo& segment_info) {
          counter.other * rnd_access_factor + counter.dictionary_access * dictionary_access_factor;
 }
 
-void AntiCachingPlugin::_swap_segments(const std::unordered_set<SegmentID, SegmentIDHasher>& segment_ids_to_evict) {
+void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_segment_ids) {
   _log_line("swapping segments");
+
+  std::unordered_set<SegmentID, SegmentIDHasher> in_memory_segment_ids_set;
+  for (const auto& segment_id : in_memory_segment_ids) {
+    in_memory_segment_ids_set.insert(segment_id);
+  }
+
+
+  auto bytes_evicted = 0ul;
+  auto bytes_restored = 0ul;
+  size_t allocated_at_start;
+  size_t size_of_size_t = sizeof(size_t);
+  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+
   auto& persistent_memory_resource = PersistentMemoryManager::get().get(_memory_resource_handle);
   // TODO: Locking?
   _for_all_segments(Hyrise::get().storage_manager.tables(), false, [&](const SegmentID segment_id,
@@ -205,8 +247,26 @@ void AntiCachingPlugin::_swap_segments(const std::unordered_set<SegmentID, Segme
     if (segment_ptr->access_counter.counter().sum() > 10'000'000'000ul) {
       std::cout << "AccessCount too big.\n";
     }
+    if (in_memory_segment_ids_set.contains(segment_id)) {
+      // make sure it is in memory
+      auto evicted_segment = _evicted_segments.find(segment_id);
+      if (evicted_segment != _evicted_segments.cend()) {
+        // move into memory
+        auto copy_of_segment = segment_ptr->copy_using_allocator({});
+        auto table_ptr = Hyrise::get().storage_manager.get_table(segment_id.table_name);
+        auto chunk_ptr = table_ptr->get_chunk(segment_id.chunk_id);
+        chunk_ptr->replace_segment(segment_id.column_id, copy_of_segment);
 
-    if (segment_ids_to_evict.contains(segment_id)) {
+        auto segment_size = segment_ptr->memory_usage(MemoryUsageCalculationMode::Full);
+        _evicted_segments.erase(evicted_segment);
+        _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d, size: %d) moved to memory.") %
+                   segment_id.table_name % segment_id.column_name %
+                   segment_id.chunk_id % segment_ptr->access_counter.counter().sum() %
+                   segment_size).str());
+        bytes_restored += segment_size;
+      }
+    } else {
+      // evict segment.
       if (!_evicted_segments.contains(segment_id)) {
         // ggf. Kopie anlegen
         auto copy_of_segment = std::shared_ptr<BaseSegment>{nullptr};
@@ -224,29 +284,26 @@ void AntiCachingPlugin::_swap_segments(const std::unordered_set<SegmentID, Segme
         auto chunk_ptr = table_ptr->get_chunk(segment_id.chunk_id);
         chunk_ptr->replace_segment(segment_id.column_id, copy_of_segment);
 
+        auto segment_size = segment_ptr->memory_usage(MemoryUsageCalculationMode::Full);
         _evicted_segments.insert(segment_id);
-        _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d) evicted.") %
+        _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d, size: %d) evicted.") %
                    segment_id.table_name % segment_id.column_name %
-                   segment_id.chunk_id % segment_ptr->access_counter.counter().sum()).str());
-      }
-    } else {
-      // make sure it is in memory
-      auto evicted_segment = _evicted_segments.find(segment_id);
-      if (evicted_segment != _evicted_segments.cend()) {
-        // move into memory
-        auto copy_of_segment = segment_ptr->copy_using_allocator({});
-        auto table_ptr = Hyrise::get().storage_manager.get_table(segment_id.table_name);
-        auto chunk_ptr = table_ptr->get_chunk(segment_id.chunk_id);
-        chunk_ptr->replace_segment(segment_id.column_id, copy_of_segment);
-
-        _evicted_segments.erase(evicted_segment);
-        _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d) moved to memory.") %
-                   segment_id.table_name % segment_id.column_name %
-                   segment_id.chunk_id % segment_ptr->access_counter.counter().sum()).str());
+                   segment_id.chunk_id % segment_ptr->access_counter.counter().sum() %
+                   segment_size).str());
+        bytes_evicted += segment_size;
       }
     }
   });
-  _log_line("segments swapped.");
+
+  size_t allocated_at_end;
+  mallctl("epoch", nullptr, nullptr, &allocated_at_end, size_of_size_t);
+  mallctl("stats.allocated", &allocated_at_end, &size_of_size_t, nullptr, 0);
+
+  _log_line((boost::format("Segments swapped. Bytes evicted: %d, Bytes restored: %d, stats.allocated start: %d, "
+                           "stats.allocated end: %d, stats.allocated diff: %s%d.") %
+             bytes_evicted % bytes_restored % allocated_at_start % allocated_at_end %
+             (allocated_at_end < allocated_at_start ? "-" : "+") %
+             (std::max(allocated_at_start, allocated_at_end) - std::min(allocated_at_start, allocated_at_end))).str());
 }
 
 void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta_data,

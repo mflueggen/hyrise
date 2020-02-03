@@ -17,6 +17,8 @@
 #include "utils/assert.hpp"
 #include "utils/sqlite_add_indices.hpp"
 
+#include "third_party/jemalloc/include/jemalloc/jemalloc.h"
+
 using namespace opossum;  // NOLINT
 
 /**
@@ -34,6 +36,34 @@ using namespace opossum;  // NOLINT
 
 int main(int argc, char* argv[]) {
   auto cli_options = BenchmarkRunner::get_basic_cli_options("TPC-H Benchmark");
+
+  size_t allocated, sz;
+  sz = sizeof(size_t);
+//  mallctl("thread.tcache.flush", nullptr, nullptr, nullptr, 0);
+  mallctl("stats.allocated", &allocated, &sz, nullptr, 0);
+  std::cout << "1 - stats.allocated: " << allocated << "\n";
+  auto memory = std::make_unique<char[]> (1024*1024*1024);
+//  auto memory = (char*)malloc(1024*1024*1024);
+//  auto memory = new char[1024*1024*1024];
+  memory[0] = 'M';
+  memory[1] = 'a';
+  memory[2] = 'p';
+  memory[3] = 'p';
+  memory[4] = '\0';
+  std::cout << memory.get() << "\n";
+//  mallctl("thread.tcache.flush", nullptr, nullptr, nullptr, 0);
+  if (mallctl("epoch", nullptr, nullptr, &allocated, sz))
+    std::cout << "mallctl failure." << "\n";
+  if (mallctl("stats.allocated", &allocated, &sz, nullptr, 0))
+    std::cout << "mallctl failure." << "\n";
+  std::cout << "2 - stats.allocated: " << allocated << "\n";
+  memory.reset();
+//  free(memory);
+//  delete[] memory;
+  mallctl("epoch", nullptr, nullptr, &allocated, sz);
+  mallctl("stats.allocated", &allocated, &sz, nullptr, 0);
+  std::cout << "3 - stats.allocated: " << allocated << "\n";
+
 
   // clang-format off
   cli_options.add_options()
@@ -134,6 +164,8 @@ int main(int argc, char* argv[]) {
   // AntiCachingPlugin laden.
   // Reset der Counter durchführen.
 
+  mallctl("stats.allocated", &allocated, &sz, nullptr, 0);
+  std::cout << "Before benchmark_runner->run(): " << allocated << "\n";
   benchmark_runner->run();
 //  SegmentAccessStatistics_T::save_to_csv(Hyrise::get().storage_manager.tables(), "access_statistics_tpch_10s_meta.csv",
 //    "access_statistics_tpch_10s.csv");
