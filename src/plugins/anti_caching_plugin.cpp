@@ -1,15 +1,17 @@
 #include "anti_caching_plugin.hpp"
 
 #include <ctime>
+#include <fstream>
 #include <iostream>
 #include <numeric>
 
-#include "third_party/jemalloc/include/jemalloc/jemalloc.h"
 #include "boost/format.hpp"
 #include "hyrise.hpp"
 #include "knapsack_solver.hpp"
 #include "persistent_memory_manager.hpp"
 #include "storage/segment_access_counter.hpp"
+#include "third_party/jemalloc/include/jemalloc/jemalloc.h"
+#include "../../third_party/nlohmann_json/single_include/nlohmann/json.hpp"
 
 namespace opossum {
 
@@ -29,10 +31,11 @@ size_t SegmentIDHasher::operator()(const SegmentID& segment_id) const {
 
 }
 
-AntiCachingPlugin::AntiCachingPlugin() {
+AntiCachingPlugin::AntiCachingPlugin()
+  : _config{_read_config("anti_caching_plugin.json")} {
   _log_file.open("anti_caching_plugin.log", std::ofstream::app);
-  _log_line("Plugin created");
-  _memory_resource_handle = PersistentMemoryManager::get().create(4ul * 1024 * 1024 * 1024);
+  _memory_resource_handle = PersistentMemoryManager::get().create(_config.pool_size);
+  _log_line("Plugin created with " + _config.to_string());
 }
 
 AntiCachingPlugin::~AntiCachingPlugin() {
@@ -44,11 +47,10 @@ const std::string AntiCachingPlugin::description() const {
 }
 
 void AntiCachingPlugin::start() {
-
   _log_line("Starting Plugin");
   _evaluate_statistics_thread =
-    std::make_unique<PausableLoopThread>(REFRESH_STATISTICS_INTERVAL, [&](size_t) { _evaluate_statistics(); });
-
+    std::make_unique<PausableLoopThread>(std::chrono::milliseconds(_config.segment_eviction_interval_in_ms),
+                                         [&](size_t) { _evaluate_statistics(); });
 }
 
 void AntiCachingPlugin::stop() {
@@ -56,21 +58,25 @@ void AntiCachingPlugin::stop() {
   _evaluate_statistics_thread.reset();
 }
 
+AntiCachingConfig AntiCachingPlugin::_read_config(const std::string filename) {
+  auto default_config = AntiCachingConfig::get_default_config();
+  if (std::filesystem::exists(filename)) {
+    std::ifstream config_file(filename);
+    nlohmann::json json_config;
+    config_file >> json_config;
+    default_config.memory_budget = json_config.value("memory_budget", default_config.memory_budget);
+    default_config.pool_size = json_config.value("pool_size", default_config.pool_size);
+    default_config.segment_eviction_interval_in_ms = json_config.value("segment_eviction_interval_in_ms",
+                                                                       default_config.segment_eviction_interval_in_ms);
+  }
+
+  return default_config;
+}
+
 void AntiCachingPlugin::_evaluate_statistics() {
   _log_line("Evaluating statistics start");
 
   const auto timestamp = std::chrono::steady_clock::now();
-  // 1. Ermittle alle Segmente // Vielleicht doch nur _fetch_segments?
-  // Segment ID und Ptr
-  // SegmentID, segment_ptr
-  // 2. Übergebe Werte an Knapsack Solver.
-  // Bekomme indices zurück, die behalten werden sollen
-  // Mappe auf SegmentID. Mache daraus ein set.
-  // Iteriere über alle SegmentIDs. Falls in set und nicht evicted. alles gut.
-  // Falls in set und evicted -> Hauptspeicher
-  // Falls nicht in set und evicted -> alles ok.
-  // Falls nicht in set und nicht evicted -> evict.
-
 
   auto current_statistics = _fetch_current_statistics();
   if (!current_statistics.empty()) {
@@ -150,7 +156,7 @@ std::vector<SegmentID> AntiCachingPlugin::_determine_in_memory_segments() {
     memory_usages[index] = segment_info.memory_usage;
   }
 
-  auto indices_of_memory_segments = KnapsackSolver::solve(memory_budget, values, memory_usages);
+  auto indices_of_memory_segments = KnapsackSolver::solve(_config.memory_budget, values, memory_usages);
 
   std::vector<SegmentID> segment_ids;
   segment_ids.reserve(indices_of_memory_segments.size());
@@ -173,14 +179,15 @@ std::vector<SegmentID> AntiCachingPlugin::_determine_in_memory_segments() {
              segment_information.size() %
              evicted_memory %
              (total_size / bytes_in_mb) %
-             (100.0f * selected_size / memory_budget) %
-             (memory_budget / bytes_in_mb)).str());
+             (100.0f * selected_size / _config.memory_budget) %
+             (_config.memory_budget / bytes_in_mb)).str());
 
   return segment_ids;
 }
 
 std::vector<SegmentInfo>
-AntiCachingPlugin::_select_segment_information_for_value_computation(const std::vector<TimestampSegmentInfosPair>& access_statistics) {
+AntiCachingPlugin::_select_segment_information_for_value_computation(
+  const std::vector<TimestampSegmentInfosPair>& access_statistics) {
   if (access_statistics.empty()) return {};
   const auto& current = access_statistics.back().second;
   if (access_statistics.size() == 1) return current;

@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 
+#include "anti_caching_config.hpp"
 #include "utils/abstract_plugin.hpp"
 #include "utils/pausable_loop_thread.hpp"
 #include "storage/base_segment.hpp"
@@ -71,9 +72,9 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   void reset_access_statistics();
 
-  size_t memory_budget = 5ul * 1024ul * 1024ul;
-
  private:
+
+  static AntiCachingConfig _read_config(const std::string filename);
 
   template<typename Functor>
   static void _for_all_segments(const std::map<std::string, std::shared_ptr<Table>>& tables,
@@ -98,6 +99,7 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   void _log_line(const std::string& text);
 
+  const AntiCachingConfig _config;
   std::ofstream _log_file;
   size_t _memory_resource_handle;
   std::unordered_set<SegmentID, SegmentIDHasher> _evicted_segments;
@@ -106,7 +108,6 @@ class AntiCachingPlugin : public AbstractPlugin {
   std::vector<TimestampSegmentInfosPair> _access_statistics;
   std::unique_ptr<PausableLoopThread> _evaluate_statistics_thread;
 
-  constexpr static std::chrono::milliseconds REFRESH_STATISTICS_INTERVAL = std::chrono::milliseconds(10'000);
   const std::chrono::time_point<std::chrono::steady_clock> _initialization_time{std::chrono::steady_clock::now()};
 };
 

@@ -60,7 +60,7 @@ TEST_F(AntiCachingPluginTest, EvaluateStatisticsWithEviction) {
   Hyrise::get().storage_manager.add_table("int_equal_distribution", table);
   table = load_table("resources/test_data/tbl/int_string_like_not_equals.tbl", 3);
   Hyrise::get().storage_manager.add_table("int_string_like_not_equals", table);
-  plugin.memory_budget = 2500;
+  plugin._memory_budget = 2500;
   plugin._evaluate_statistics();
 }
 

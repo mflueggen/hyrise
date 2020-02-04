@@ -35,9 +35,9 @@ add_plugin(NAME hyriseTestPlugin SRCS test_plugin.cpp test_plugin.hpp)
 add_plugin(NAME hyriseTestNonInstantiablePlugin SRCS non_instantiable_plugin.cpp)
 include_directories(/usr/local/include)
 link_directories(/usr/local/lib)
-add_plugin(NAME AntiCachingPlugin SRCS anti_caching_plugin.cpp anti_caching_plugin.hpp knapsack_solver.cpp
-    knapsack_solver.hpp persistent_memory_manager.cpp persistent_memory_manager.hpp pmemobj_memory_resource.cpp
-    pmemobj_memory_resource.hpp LIBS pmemobj)
+add_plugin(NAME AntiCachingPlugin SRCS anti_caching_config.cpp anti_caching_config.hpp anti_caching_plugin.cpp
+    anti_caching_plugin.hpp knapsack_solver.cpp knapsack_solver.hpp persistent_memory_manager.cpp
+    persistent_memory_manager.hpp pmemobj_memory_resource.cpp pmemobj_memory_resource.hpp LIBS pmemobj)
 
 
 # We define TEST_PLUGIN_DIR to always load plugins from the correct directory for testing purposes
