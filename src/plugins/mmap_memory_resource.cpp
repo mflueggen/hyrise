@@ -1,6 +1,7 @@
 #include "mmap_memory_resource.hpp"
 
 #include <cstdio>
+#include <fcntl.h>
 #include <filesystem>
 #include <sys/mman.h>
 
@@ -13,10 +14,11 @@ MmapMemoryResource::MmapMemoryResource(const std::string& name, size_t file_size
   : name{name}, file_size{file_size}, _upper_file_pos{0} {
   // create a new file with file_size
   auto file = std::fopen(name.c_str(), "w+");
-  // auto file = open64(name, O_RDWR | O_TRUNC, O_DIRECT | O_DSYNC);
+//   auto file = open64(name.c_str(), O_RDWR | O_TRUNC, O_DIRECT | O_DSYNC);
   Assert(file, "Could not open/create file " + name);
   std::filesystem::resize_file(name, file_size);
 
+//  auto mmap_pointer = mmap64(NULL, file_size, PROT_WRITE, MAP_SHARED, file, 0);
   auto mmap_pointer = mmap64(NULL, file_size, PROT_WRITE, MAP_SHARED, file->_fileno, 0);
   Assert(_mmap_pointer != MAP_FAILED, "mmap failed.");
   _mmap_pointer = (char*)mmap_pointer;
@@ -24,6 +26,7 @@ MmapMemoryResource::MmapMemoryResource(const std::string& name, size_t file_size
   //  After the mmap() call has returned, the file descriptor, fd, can be
   //  closed immediately without invalidating the mapping.
   std::fclose(file);
+//  close(file);
 }
 
 void* MmapMemoryResource::do_allocate(size_t bytes, size_t alignment) {

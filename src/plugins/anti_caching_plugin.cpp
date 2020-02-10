@@ -1,7 +1,7 @@
 #include "anti_caching_plugin.hpp"
 
 #include <ctime>
-#include <fstream>
+
 #include <iostream>
 #include <numeric>
 
@@ -11,7 +11,7 @@
 #include "persistent_memory_manager.hpp"
 #include "storage/segment_access_counter.hpp"
 #include "third_party/jemalloc/include/jemalloc/jemalloc.h"
-#include "../../third_party/nlohmann_json/single_include/nlohmann/json.hpp"
+
 
 namespace opossum {
 
@@ -34,7 +34,12 @@ size_t SegmentIDHasher::operator()(const SegmentID& segment_id) const {
 AntiCachingPlugin::AntiCachingPlugin()
   : _config{_read_config("anti_caching_plugin.json")} {
   _log_file.open("anti_caching_plugin.log", std::ofstream::app);
-  _memory_resource_handle = PersistentMemoryManager::get().create(_config.pool_size);
+  if (_config.memory_resource_type == AntiCachingConfig::PMEM_MEMORY_RESOURCE_TYPE) {
+    _memory_resource_handle = PersistentMemoryManager::get().create_pmemobj(_config.pool_size);
+  }
+  else {
+    _memory_resource_handle = PersistentMemoryManager::get().create_mmap(_config.pool_size);
+  }
   _log_line("Plugin created with " + _config.to_string());
 }
 
@@ -59,18 +64,7 @@ void AntiCachingPlugin::stop() {
 }
 
 AntiCachingConfig AntiCachingPlugin::_read_config(const std::string filename) {
-  auto default_config = AntiCachingConfig::get_default_config();
-  if (std::filesystem::exists(filename)) {
-    std::ifstream config_file(filename);
-    nlohmann::json json_config;
-    config_file >> json_config;
-    default_config.memory_budget = json_config.value("memory_budget", default_config.memory_budget);
-    default_config.pool_size = json_config.value("pool_size", default_config.pool_size);
-    default_config.segment_eviction_interval_in_ms = json_config.value("segment_eviction_interval_in_ms",
-                                                                       default_config.segment_eviction_interval_in_ms);
-  }
-
-  return default_config;
+  return AntiCachingConfig(filename);
 }
 
 void AntiCachingPlugin::_evaluate_statistics() {
