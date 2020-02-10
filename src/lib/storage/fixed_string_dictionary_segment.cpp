@@ -56,13 +56,15 @@ ChunkOffset FixedStringDictionarySegment<T>::size() const {
 
 template <typename T>
 std::shared_ptr<BaseSegment> FixedStringDictionarySegment<T>::copy_using_allocator(
-    const PolymorphicAllocator<size_t>& alloc) const {
+  const PolymorphicAllocator<size_t>& alloc) const {
   auto new_attribute_vector_ptr = _attribute_vector->copy_using_allocator(alloc);
   auto new_attribute_vector_sptr = std::shared_ptr<const BaseCompressedVector>(std::move(new_attribute_vector_ptr));
   auto new_dictionary = FixedStringVector(*_dictionary);
   auto new_dictionary_ptr = std::allocate_shared<FixedStringVector>(alloc, std::move(new_dictionary));
-  return std::allocate_shared<FixedStringDictionarySegment<T>>(alloc, new_dictionary_ptr, new_attribute_vector_sptr,
-                                                               _null_value_id);
+  auto copy = std::allocate_shared<FixedStringDictionarySegment<T>>(alloc, new_dictionary_ptr,
+    new_attribute_vector_sptr, _null_value_id);
+  copy->access_counter.set_counter_values(access_counter);
+  return copy;
 }
 
 template <typename T>
