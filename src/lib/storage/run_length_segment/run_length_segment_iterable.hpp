@@ -19,8 +19,6 @@ class RunLengthSegmentIterable : public PointAccessibleSegmentIterable<RunLength
   template <typename Functor>
   void _on_with_iterators(const Functor& functor) const {
     _segment.access_counter.on_iterator_create(_segment.size());
-    auto begin =
-        Iterator{_segment.values()->cbegin(), _segment.null_values()->cbegin(), _segment.end_positions()->cbegin(), 0u};
     auto begin = Iterator{_segment.values()->cbegin(), _segment.null_values()->cbegin(),
                           _segment.end_positions()->cbegin(), _segment.end_positions()->cbegin(), ChunkOffset{0}};
     auto end = Iterator{_segment.values()->cend(), _segment.null_values()->cend(), _segment.end_positions()->cend(),

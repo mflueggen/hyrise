@@ -3,9 +3,9 @@
 #include <unordered_map>
 
 #include "boost/container/pmr/memory_resource.hpp"
-#include "libpmemobj.h"
-#include "libpmemobj++/persistent_ptr.hpp"
-#include "libpmemobj++/pool.hpp"
+#include "../../third_party/pmdk/src/include/libpmemobj.h"
+#include "../../third_party/libpmemobj-cpp/include/libpmemobj++/persistent_ptr.hpp"
+#include "../../third_party/libpmemobj-cpp/include/libpmemobj++/pool.hpp"
 #include "types.hpp"
 
 namespace opossum {
