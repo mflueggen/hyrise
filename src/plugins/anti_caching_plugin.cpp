@@ -293,6 +293,8 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
                    segment_size).str());
         bytes_evicted += segment_size;
       }
+      // an dieser Stelle dontneed setzen.
+      // damit das funktioniert, muss ich den Speicherbereich für das gesamte Segment kennen.
     }
   });
 
