@@ -7,6 +7,8 @@
 #include "../lib/utils/assert.hpp"
 #include "boost/format.hpp"
 
+namespace opossum {
+
 AntiCachingConfig::AntiCachingConfig(uint64_t segment_eviction_interval_in_ms, uint64_t pool_size,
                                      uint64_t memory_budget, const std::string& memory_resource_type)
   : segment_eviction_interval_in_ms{segment_eviction_interval_in_ms}, pool_size{pool_size},
@@ -34,3 +36,5 @@ std::string AntiCachingConfig::to_string() const {
                         "memory_resource_type: %s") %
           segment_eviction_interval_in_ms % pool_size % memory_budget % memory_resource_type).str();
 }
+
+} // namespace opossum

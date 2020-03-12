@@ -4,10 +4,12 @@
 #include <memory>
 #include <string>
 
+namespace opossum {
+
 class AntiCachingConfig {
  public:
   AntiCachingConfig(uint64_t segment_eviction_interval_in_ms, uint64_t pool_size, uint64_t memory_budget,
-    const std::string& memory_resource_type);
+                    const std::string& memory_resource_type);
 
   AntiCachingConfig(const std::string& filename);
 
@@ -27,4 +29,4 @@ class AntiCachingConfig {
   AntiCachingConfig() = default;
 };
 
-
+} // namespace opossum

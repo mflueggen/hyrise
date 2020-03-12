@@ -7,11 +7,11 @@
 
 namespace opossum {
 
-class MmapMemoryResource  : private Noncopyable, public boost::container::pmr::memory_resource {
+class MmapMemoryResource : private Noncopyable, public boost::container::pmr::memory_resource {
  public:
-  MmapMemoryResource(const std::string& name, size_t file_size);
+  MmapMemoryResource(const std::string& filename, size_t file_size);
 
-  const std::string name;
+  const std::string filename;
   const size_t file_size;
 
  private:
@@ -26,6 +26,3 @@ class MmapMemoryResource  : private Noncopyable, public boost::container::pmr::m
 };
 
 }  // namespace opossum
-
-
-

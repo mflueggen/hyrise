@@ -15,22 +15,6 @@
 
 namespace opossum {
 
-namespace anticaching {
-
-bool SegmentID::operator==(const SegmentID& other) const {
-  return table_name == other.table_name && chunk_id == other.chunk_id && column_id == other.column_id;
-}
-
-size_t SegmentIDHasher::operator()(const SegmentID& segment_id) const {
-  size_t res = 17;
-  res = res * 31 + std::hash<std::string>()(segment_id.table_name);
-  res = res * 31 + std::hash<ChunkID>()(segment_id.chunk_id);
-  res = res * 31 + std::hash<ColumnID>()(segment_id.column_id);
-  return res;
-}
-
-}
-
 AntiCachingPlugin::AntiCachingPlugin()
   : _config{_read_config("anti_caching_plugin.json")} {
   _log_file.open("anti_caching_plugin.log", std::ofstream::app);
@@ -224,6 +208,11 @@ float AntiCachingPlugin::_compute_value(const SegmentInfo& segment_info) {
          counter.other * rnd_access_factor + counter.dictionary_access * dictionary_access_factor;
 }
 
+/**
+ *
+ * @param in_memory_segment_ids Ids of segments which should be copied to main memory. All other ids are moved to a
+ * secondary memory.
+ */
 void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_segment_ids) {
   _log_line("swapping segments");
 
@@ -231,6 +220,20 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
   for (const auto& segment_id : in_memory_segment_ids) {
     in_memory_segment_ids_set.insert(segment_id);
   }
+
+  // Dieser Code ist abhängig von der verwendeten MemoryResource
+  // Für UMAP benötigen benötigen wir eine eigene Resource zum Schreiben der Daten.
+  // Wegschreiben mit mmap
+  // Ich muss immer Blockweise speicher reservieren.
+  // ggf. neue mmap datei anlegen
+  // Segmente verschieben
+  // msync
+  // mmap Datei schließen
+  // Datei mit umap öffnen und geöffnet halten
+  // Copy Segment using allocator mit umap pointer.
+  // Diese bleiben alle gemappt.
+  // Kann ich mmap
+
 
 
   auto bytes_evicted = 0ul;
@@ -240,14 +243,19 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
   mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
   mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
 
+  // TODO: We need a write and read handle
+  // Switch to
   auto& persistent_memory_resource = PersistentMemoryManager::get().get(_memory_resource_handle);
   // TODO: Locking?
   _for_all_segments(Hyrise::get().storage_manager.tables(), false, [&](const SegmentID segment_id,
                                                                        const std::shared_ptr<BaseSegment> segment_ptr) {
 
+    // TODO: Currently just an assertion. Will be removed
     if (segment_ptr->access_counter.counter().sum() > 10'000'000'000ul) {
       std::cout << "AccessCount too big.\n";
     }
+
+    // copy segments from secondary memory to main memory
     if (in_memory_segment_ids_set.contains(segment_id)) {
       // make sure it is in memory
       auto evicted_segment = _evicted_segments.find(segment_id);
@@ -257,7 +265,7 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
         auto table_ptr = Hyrise::get().storage_manager.get_table(segment_id.table_name);
         auto chunk_ptr = table_ptr->get_chunk(segment_id.chunk_id);
         chunk_ptr->replace_segment(segment_id.column_id, copy_of_segment);
-
+        // TODO: This is just for logging purposes
         auto segment_size = segment_ptr->memory_usage(MemoryUsageCalculationMode::Full);
         _evicted_segments.erase(evicted_segment);
         _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d, size: %d) moved to memory.") %
@@ -268,6 +276,7 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
       }
     } else {
       // evict segment.
+      // copy segments from main memory to secondary memory.
       if (!_evicted_segments.contains(segment_id)) {
         // ggf. Kopie anlegen
         auto copy_of_segment = std::shared_ptr<BaseSegment>{nullptr};
@@ -283,6 +292,12 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
         }
         auto table_ptr = Hyrise::get().storage_manager.get_table(segment_id.table_name);
         auto chunk_ptr = table_ptr->get_chunk(segment_id.chunk_id);
+        // man müsste diese Informationen wegspeichern
+        // die mmap datei schließen
+        // Remap mit umap
+        // Frage ist, ob ein Pointer erhalten bleibt, wenn ich das mapping schließe und wieder öffne.
+        // Vermutlich kann man sich nicht darauf verlassen.
+        // benötigen wir die offsets
         chunk_ptr->replace_segment(segment_id.column_id, copy_of_segment);
 
         auto segment_size = segment_ptr->memory_usage(MemoryUsageCalculationMode::Full);

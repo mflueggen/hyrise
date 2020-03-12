@@ -3,6 +3,7 @@
 #include <limits>
 #include <numeric>
 
+namespace opossum {
 
 /**
  * Simple implementation for approximating the knapsack problem. We assume, that the memory budget is so large, that in
@@ -40,3 +41,5 @@ std::vector<size_t> KnapsackSolver::solve(const uint64_t memory_budget, const st
   // returns indices of objects to pack
   return selected_indices;
 }
+
+}  // namespace opossum
