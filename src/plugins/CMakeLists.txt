@@ -54,8 +54,6 @@ add_plugin(NAME AntiCachingPlugin
     anti_caching/memory_resource/mmap_memory_resource.hpp
 #    anti_caching/memory_resource/pmemobj_memory_resource.cpp
 #    anti_caching/memory_resource/pmemobj_memory_resource.hpp
-    anti_caching/memory_resource/umap_memory_resource.cpp
-    anti_caching/memory_resource/umap_memory_resource.hpp
     LIBS
     pmemobj
     ${UMAP_LIB})

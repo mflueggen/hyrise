@@ -1,20 +1,19 @@
 #include <memory>
-#include <string>
 
 #include "../segment_id.hpp"
-#include "../memory_resource/mmap_memory_resource.hpp"
 #include "abstract_segment_manager.hpp"
+#include "boost/container/pmr/memory_resource.hpp"
 #include "storage/base_segment.hpp"
 
 namespace opossum::anticaching {
 
-class UmapSegmentManager: public AbstractSegmentManager {
+class PmrSegmentManager: public AbstractSegmentManager {
  public:
-  UmapSegmentManager(const std::string& filename, const size_t file_size);
+  PmrSegmentManager(boost::container::pmr::memory_resource& memory_resource);
   std::shared_ptr<BaseSegment> store(SegmentID segment_id, const std::shared_ptr<BaseSegment>& segment) override;
 
  private:
-  MmapMemoryResource _mmap_memory_resource;
+  boost::container::pmr::memory_resource& _memory_resource;
 };
 
 } // namespace opossum::anticaching

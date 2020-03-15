@@ -1,5 +1,4 @@
-#include "types.hpp"
-
+#include <memory>
 #include <unordered_map>
 
 #include "../segment_id.hpp"
@@ -9,12 +8,11 @@ namespace opossum::anticaching {
 
 class AbstractSegmentManager: private Noncopyable {
  public:
-  explicit AbstractSegmentManager();
   virtual ~AbstractSegmentManager() = default;
 
-  std::shared_ptr<BaseSegment> load(const SegmentID& segment_id);
-  std::shared_ptr<BaseSegment> store(SegmentID segment_id, std::shared_ptr<BaseSegment> segment);
-  bool remove(const SegmentID& segment_id);
+  virtual std::shared_ptr<BaseSegment> load(const SegmentID& segment_id);
+  virtual std::shared_ptr<BaseSegment> store(SegmentID segment_id, const std::shared_ptr<BaseSegment>& segment) = 0;
+  virtual bool remove(const SegmentID& segment_id);
 
  protected:
   std::unordered_map<SegmentID, std::shared_ptr<BaseSegment>, SegmentIDHasher> _cached_segments;

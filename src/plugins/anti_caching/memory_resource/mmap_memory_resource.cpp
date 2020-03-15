@@ -11,28 +11,40 @@
 namespace opossum {
 
 MmapMemoryResource::MmapMemoryResource(const std::string& filename, size_t file_size)
-  : filename{filename}, file_size{file_size}, _upper_file_pos{0} {
+  : filename{filename}, file_size{file_size} {
   // create a new file with file_size
-  auto file = open(filename.c_str(), O_CREAT | O_RDWR | O_DIRECT | O_SYNC | O_DSYNC, S_IRWXU);
-  Assert(file >= 0, "Could not open/create file " + filename);
+  _file_descriptor = open(filename.c_str(), O_CREAT | O_RDWR | O_DIRECT | O_SYNC | O_DSYNC, S_IRWXU);
+  Assert(_file_descriptor >= 0, "Could not open/create file " + filename);
   std::filesystem::resize_file(filename, file_size);
 
-  auto mmap_pointer = mmap(NULL, file_size, PROT_WRITE, MAP_SHARED, file, 0);
+  auto mmap_pointer = mmap(NULL, file_size, PROT_WRITE, MAP_SHARED, _file_descriptor, 0);
   Assert(_mmap_pointer != MAP_FAILED, "mmap failed.");
   _mmap_pointer = (char*)mmap_pointer;
 
   //  After the mmap() call has returned, the file descriptor, fd, can be
   //  closed immediately without invalidating the mapping.
-  close(file);
+
+}
+
+MmapMemoryResource::~MmapMemoryResource() {
+  close(_file_descriptor);
+}
+
+const char* MmapMemoryResource::map_pointer() const {
+  return _mmap_pointer;
+}
+
+int MmapMemoryResource::file_descriptor() const {
+  return _file_descriptor;
 }
 
 void* MmapMemoryResource::do_allocate(size_t bytes, size_t alignment) {
   // round _upper_file_pos to possibly new alignment
-  const auto return_offset = _upper_file_pos + _upper_file_pos % alignment;
+  const auto return_offset = upper_file_pos + upper_file_pos % alignment;
   const auto new_upper_file_pos = return_offset + bytes;
   Assert(new_upper_file_pos < file_size, "Not enough free memory in mmap file.");
 
-  _upper_file_pos = new_upper_file_pos;
+  upper_file_pos = new_upper_file_pos;
   return _mmap_pointer + return_offset;
 }
 
