@@ -10,6 +10,11 @@ bool SegmentID::operator==(const SegmentID& other) const {
   return table_name == other.table_name && chunk_id == other.chunk_id && column_id == other.column_id;
 }
 
+std::string SegmentID::to_string() const {
+  return "table_name=" + table_name + ", column_name=" + column_name + ", column_id=" + std::to_string(column_id) +
+         ", chunk_id=" + std::to_string(chunk_id);
+}
+
 size_t SegmentIDHasher::operator()(const SegmentID& segment_id) const {
   size_t res = 17;
   res = res * 31 + std::hash<std::string>()(segment_id.table_name);

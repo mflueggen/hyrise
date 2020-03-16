@@ -1,3 +1,7 @@
+#pragma once
+
+#include <string>
+
 #include "types.hpp"
 
 namespace opossum::anticaching {
@@ -12,10 +16,12 @@ struct SegmentID {
   std::string column_name;
 
   bool operator==(const SegmentID& other) const;
+
+  std::string to_string() const;
 };
 
 struct SegmentIDHasher {
   std::size_t operator()(const SegmentID& segment_id) const;
 };
 
-} // namespace opossum::anticaching {
+} // namespace opossum::anticaching

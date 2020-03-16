@@ -16,7 +16,7 @@ std::shared_ptr<BaseSegment> PmrSegmentManager::store(SegmentID segment_id,
   Assert(_cached_segments.find(segment_id) != _cached_segments.cend(), "Segment with segment_id(" +
     segment_id.to_string() + ") already exists as cached segment.");
   // copy segment using allocator // dem wird die memory resource mitgegeben
-  auto copy = segment->copy_using_allocator(_memory_resource);
+  auto copy = segment->copy_using_allocator(&_memory_resource);
   _cached_segments[segment_id] = copy;
   _active_segments.insert({std::move(segment_id), copy});
   return copy;

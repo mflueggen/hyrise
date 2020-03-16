@@ -1,6 +1,8 @@
 #include "umap_segment_manager.hpp"
 
 #include <boost/interprocess/mapped_region.hpp>
+#include <sys/mman.h>
+
 #include "umap.h"
 
 namespace opossum::anticaching {
@@ -15,12 +17,11 @@ std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
   Assert(_cached_segments.find(segment_id) != _cached_segments.cend(), "Segment with segment_id(" +
     segment_id.to_string() + ") already exists as cached segment.");
 
-  const auto page_size = boost::interprocess::mapped_region::get_page_size();
   const auto umap_page_size = umapcfg_get_umap_page_size();
   const auto mmap_position_before_allocation = _mmap_memory_resource.upper_file_pos;
 
   // todo: refactor, maybe?
-  auto copy = segment->copy_using_allocator(_mmap_memory_resource);
+  auto copy = segment->copy_using_allocator(&_mmap_memory_resource);
   _cached_segments[segment_id] = copy;
   _active_segments.insert({std::move(segment_id), copy});
 

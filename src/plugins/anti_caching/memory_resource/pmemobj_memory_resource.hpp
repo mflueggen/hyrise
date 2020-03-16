@@ -8,7 +8,7 @@
 #include "../../third_party/libpmemobj-cpp/include/libpmemobj++/pool.hpp"
 #include "types.hpp"
 
-namespace opossum {
+namespace opossum::anticaching {
 
 // not copyable, movable
 class PmemObjMemoryResource : private Noncopyable, public boost::container::pmr::memory_resource {
@@ -30,4 +30,4 @@ class PmemObjMemoryResource : private Noncopyable, public boost::container::pmr:
   bool do_is_equal(const boost::container::pmr::memory_resource& other) const noexcept override;
 };
 
-}  // namespace opossum
+}  // namespace opossum::anticaching

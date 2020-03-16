@@ -1,7 +1,8 @@
+#pragma once
+
 #include "../lib/storage/segment_access_counter.hpp"
 #include "segment_id.hpp"
 #include "types.hpp"
-
 
 namespace opossum::anticaching {
 

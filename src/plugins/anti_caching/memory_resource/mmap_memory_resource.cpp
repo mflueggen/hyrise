@@ -8,7 +8,7 @@
 #include "../lib/utils/assert.hpp"
 
 
-namespace opossum {
+namespace opossum::anticaching {
 
 MmapMemoryResource::MmapMemoryResource(const std::string& filename, size_t file_size)
   : filename{filename}, file_size{file_size} {
@@ -30,7 +30,7 @@ MmapMemoryResource::~MmapMemoryResource() {
   close(_file_descriptor);
 }
 
-const char* MmapMemoryResource::map_pointer() const {
+char* MmapMemoryResource::map_pointer() const {
   return _mmap_pointer;
 }
 
@@ -56,5 +56,5 @@ bool MmapMemoryResource::do_is_equal(const boost::container::pmr::memory_resourc
   return (this == &other);
 }
 
-}  // namespace opossum
+}  // namespace opossum::anticaching
 

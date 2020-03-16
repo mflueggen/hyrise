@@ -5,7 +5,7 @@
 #include "boost/container/pmr/memory_resource.hpp"
 #include "types.hpp"
 
-namespace opossum {
+namespace opossum::anticaching {
 
 class PersistentMemoryManager : private Noncopyable {
  public:
@@ -20,4 +20,4 @@ class PersistentMemoryManager : private Noncopyable {
   std::vector<std::unique_ptr<boost::container::pmr::memory_resource>> _memory_resources;
 };
 
-}  // namespace opossum
+}  // namespace opossum::anticaching

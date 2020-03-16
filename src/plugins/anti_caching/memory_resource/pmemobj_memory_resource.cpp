@@ -5,7 +5,7 @@
 //#include "libpmemobj++/make_persistent.hpp"
 //#include "libpmemobj++/transaction.hpp"
 
-namespace opossum {
+namespace opossum::anticaching {
 
 PmemObjMemoryResource::PmemObjMemoryResource(const std::string& name, size_t pool_size)
   : name{name}, pool_size(pool_size)
@@ -39,4 +39,4 @@ bool PmemObjMemoryResource::do_is_equal(const boost::container::pmr::memory_reso
   return (this == &other);
 }
 
-}  // namespace opossum
+}  // namespace opossum::anticaching

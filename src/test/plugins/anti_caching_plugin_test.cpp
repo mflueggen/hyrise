@@ -6,14 +6,14 @@
 #include "gtest/gtest.h"
 
 #define private public
-#include "../../plugins/anti_caching_plugin.hpp"
+#include "../plugins/anti_caching/anti_caching_plugin.hpp"
 #undef private
 #include "../utils/plugin_test_utils.hpp"
 #include "storage/storage_manager.hpp"
 #include "storage/table.hpp"
 #include "utils/load_table.hpp"
 
-namespace opossum {
+namespace opossum::anticaching {
 
 class AntiCachingPluginTest : public BaseTest {
  public:
@@ -60,7 +60,8 @@ TEST_F(AntiCachingPluginTest, EvaluateStatisticsWithEviction) {
   Hyrise::get().storage_manager.add_table("int_equal_distribution", table);
   table = load_table("resources/test_data/tbl/int_string_like_not_equals.tbl", 3);
   Hyrise::get().storage_manager.add_table("int_string_like_not_equals", table);
-  plugin._memory_budget = 2500;
+  // TODO: Enable again.
+//  plugin._memory_budget = 2500;
   plugin._evaluate_statistics();
 }
 
@@ -69,4 +70,4 @@ TEST_F(AntiCachingPluginTest, EvictSegments) {
   plugin._evict_segments();
 }
 
-}  // namespace opossum
+}  // namespace opossum::anticaching

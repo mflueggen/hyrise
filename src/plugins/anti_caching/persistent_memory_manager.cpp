@@ -5,9 +5,9 @@
 #include "memory_resource/pmemobj_memory_resource.hpp"
 
 
-namespace opossum {
+namespace opossum::anticaching {
 
-PersistentMemoryManager& opossum::PersistentMemoryManager::get() {
+PersistentMemoryManager& PersistentMemoryManager::get() {
   static PersistentMemoryManager persistent_memory_manager;
   return persistent_memory_manager;
 }
@@ -42,4 +42,4 @@ boost::container::pmr::memory_resource& PersistentMemoryManager::get(size_t hand
   return *_memory_resources[handle];
 }
 
-}  // namespace opossum
+}  // namespace opossum::anticaching

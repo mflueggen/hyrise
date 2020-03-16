@@ -1,3 +1,5 @@
+#pragma once
+
 #include <memory>
 
 #include "../segment_id.hpp"
