@@ -13,44 +13,13 @@
 #include "anti_caching_config.hpp"
 #include "utils/abstract_plugin.hpp"
 #include "utils/pausable_loop_thread.hpp"
+#include "segment_id.hpp"
+#include "segment_info.hpp"
 #include "storage/base_segment.hpp"
 #include "storage/table.hpp"
 #include "types.hpp"
 
-namespace opossum {
-
-namespace anticaching {
-struct SegmentID {
-  SegmentID(const std::string& table_name, const ChunkID chunk_id, const ColumnID column_id,
-            const std::string& column_name) : table_name{table_name}, chunk_id{chunk_id}, column_id{column_id},
-                                              column_name{column_name} {}
-
-  std::string table_name;
-  ChunkID chunk_id;
-  ColumnID column_id;
-  std::string column_name;
-
-  bool operator==(const SegmentID& other) const;
-};
-
-struct SegmentIDHasher {
-  std::size_t operator()(const SegmentID& segment_id) const;
-};
-
-struct SegmentInfo {
-  SegmentInfo(SegmentID segment_id, const size_t memory_usage, const ChunkOffset size,
-              SegmentAccessCounter::Counter<uint64_t> access_counter)
-    : segment_id{std::move(segment_id)}, memory_usage{memory_usage}, size{size},
-      access_counter{std::move(access_counter)} {}
-
-  const SegmentID segment_id;
-  const size_t memory_usage;
-  const ChunkOffset size;
-  const SegmentAccessCounter::Counter<uint64_t> access_counter;
-};
-}
-
-using namespace anticaching;
+namespace opossum::anticaching {
 
 class AntiCachingPlugin : public AbstractPlugin {
   friend class AntiCachingPluginTest;
@@ -111,5 +80,5 @@ class AntiCachingPlugin : public AbstractPlugin {
   const std::chrono::time_point<std::chrono::steady_clock> _initialization_time{std::chrono::steady_clock::now()};
 };
 
-}  // namespace opossum
+}  // namespace opossum::anticaching
 

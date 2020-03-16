@@ -2,9 +2,9 @@
 
 namespace opossum::anticaching {
 
-SegmentID(const std::string& table_name, const ChunkID chunk_id, const ColumnID column_id,
-          const std::string& column_name) : table_name{table_name}, chunk_id{chunk_id}, column_id{column_id},
-                                            column_name{column_name} {}
+SegmentID::SegmentID(const std::string& table_name, const ChunkID chunk_id, const ColumnID column_id,
+                     const std::string& column_name)
+  : table_name{table_name}, chunk_id{chunk_id}, column_id{column_id}, column_name{column_name} {}
 
 bool SegmentID::operator==(const SegmentID& other) const {
   return table_name == other.table_name && chunk_id == other.chunk_id && column_id == other.column_id;

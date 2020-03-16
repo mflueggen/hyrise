@@ -1,8 +1,8 @@
 #include "persistent_memory_manager.hpp"
 
 #include "boost/container/pmr/monotonic_buffer_resource.hpp"
-#include "mmap_memory_resource.hpp"
-#include "pmemobj_memory_resource.hpp"
+#include "memory_resource/mmap_memory_resource.hpp"
+#include "memory_resource/pmemobj_memory_resource.hpp"
 
 
 namespace opossum {

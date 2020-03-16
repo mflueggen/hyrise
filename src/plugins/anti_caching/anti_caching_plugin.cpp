@@ -13,7 +13,7 @@
 #include "third_party/jemalloc/include/jemalloc/jemalloc.h"
 
 
-namespace opossum {
+namespace opossum::anticaching {
 
 AntiCachingPlugin::AntiCachingPlugin()
   : _config{_read_config("anti_caching_plugin.json")} {

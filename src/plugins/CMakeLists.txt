@@ -50,10 +50,20 @@ add_plugin(NAME AntiCachingPlugin
     anti_caching/knapsack_solver.hpp
     anti_caching/persistent_memory_manager.cpp
     anti_caching/persistent_memory_manager.hpp
+    anti_caching/segment_id.cpp
+    anti_caching/segment_id.hpp
+    anti_caching/segment_info.cpp
+    anti_caching/segment_info.hpp
     anti_caching/memory_resource/mmap_memory_resource.cpp
     anti_caching/memory_resource/mmap_memory_resource.hpp
-#    anti_caching/memory_resource/pmemobj_memory_resource.cpp
-#    anti_caching/memory_resource/pmemobj_memory_resource.hpp
+    anti_caching/memory_resource/pmemobj_memory_resource.cpp
+    anti_caching/memory_resource/pmemobj_memory_resource.hpp
+    anti_caching/segment_manager/abstract_segment_manager.cpp
+    anti_caching/segment_manager/abstract_segment_manager.hpp
+    anti_caching/segment_manager/pmr_segment_manager.cpp
+    anti_caching/segment_manager/pmr_segment_manager.hpp
+    anti_caching/segment_manager/umap_segment_manager.cpp
+    anti_caching/segment_manager/umap_segment_manager.hpp
     LIBS
     pmemobj
     ${UMAP_LIB})
