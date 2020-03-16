@@ -1,9 +1,7 @@
 #include "pmemobj_memory_resource.hpp"
 
-#include "../../third_party/libpmemobj-cpp/include/libpmemobj++/make_persistent.hpp"
-#include "../../third_party/libpmemobj-cpp/include/libpmemobj++/transaction.hpp"
-//#include "libpmemobj++/make_persistent.hpp"
-//#include "libpmemobj++/transaction.hpp"
+#include <libpmemobj++/make_persistent.hpp>
+#include <libpmemobj++/transaction.hpp>
 
 namespace opossum::anticaching {
 

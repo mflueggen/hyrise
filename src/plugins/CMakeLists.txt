@@ -33,13 +33,10 @@ endfunction(add_plugin)
 add_plugin(NAME MvccDeletePlugin SRCS mvcc_delete_plugin.cpp mvcc_delete_plugin.hpp)
 add_plugin(NAME hyriseTestPlugin SRCS test_plugin.cpp test_plugin.hpp)
 add_plugin(NAME hyriseTestNonInstantiablePlugin SRCS non_instantiable_plugin.cpp)
-# for pmdk?
-include_directories(/usr/local/include)
-# for pmdk
-link_directories(/usr/local/lib)
 
 set(UMAP_ROOT "~/umap/bin")
 find_library(UMAP_LIB umap HINTS ${UMAP_ROOT}/lib)
+find_library(PMEMOBJ_LIB pmemobj HINTS /usr/local/lib)
 add_plugin(NAME AntiCachingPlugin
     SRCS
     anti_caching/anti_caching_config.cpp
@@ -65,13 +62,14 @@ add_plugin(NAME AntiCachingPlugin
     anti_caching/segment_manager/umap_segment_manager.cpp
     anti_caching/segment_manager/umap_segment_manager.hpp
     LIBS
-    pmemobj
-    ${UMAP_LIB})
+    ${UMAP_LIB}
+    ${PMEMOBJ_LIB})
 
 target_include_directories(AntiCachingPlugin PRIVATE
     ${UMAP_ROOT}/include
     ${UMAP_ROOT}/include/umap
-    ${UMAP_ROOT}/include/umap/store)
+    ${UMAP_ROOT}/include/umap/store
+    /usr/local/include)
 
 
 # We define TEST_PLUGIN_DIR to always load plugins from the correct directory for testing purposes
