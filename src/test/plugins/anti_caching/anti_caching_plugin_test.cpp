@@ -8,7 +8,7 @@
 #define private public
 #include "../plugins/anti_caching/anti_caching_plugin.hpp"
 #undef private
-#include "../utils/plugin_test_utils.hpp"
+#include "../../utils/plugin_test_utils.hpp"
 #include "storage/storage_manager.hpp"
 #include "storage/table.hpp"
 #include "utils/load_table.hpp"

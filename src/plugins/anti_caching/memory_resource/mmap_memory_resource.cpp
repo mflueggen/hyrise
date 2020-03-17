@@ -21,16 +21,17 @@ MmapMemoryResource::MmapMemoryResource(const std::string& filename, size_t file_
   Assert(_mmap_pointer != MAP_FAILED, "mmap failed.");
   _mmap_pointer = (char*)mmap_pointer;
 
-  //  After the mmap() call has returned, the file descriptor, fd, can be
-  //  closed immediately without invalidating the mapping.
-
+  // After the mmap() call has returned, the file descriptor, fd, can be
+  // closed immediately without invalidating the mapping.
+  // The file is kept open so the umap memory resource can use it.
+  // TODO: Is this really true?
 }
 
 MmapMemoryResource::~MmapMemoryResource() {
-  close(_file_descriptor);
+  _close_file();
 }
 
-char* MmapMemoryResource::map_pointer() const {
+char* MmapMemoryResource::mmap_pointer() const {
   return _mmap_pointer;
 }
 
@@ -38,9 +39,28 @@ int MmapMemoryResource::file_descriptor() const {
   return _file_descriptor;
 }
 
+void MmapMemoryResource::_close_file() {
+  if (_file_descriptor > -1) {
+    Assert(!msync(_mmap_pointer, file_size, MS_SYNC), "msync failed with errno=" + std::to_string(errno));
+    Assert(!munmap(_mmap_pointer, file_size), "munmap failed");
+    close(_file_descriptor);
+  }
+  _file_descriptor = -1;
+}
+
+void MmapMemoryResource::close_and_delete_file() {
+  if (_file_descriptor < 0) {
+    return;
+  }
+  _close_file();
+  Assert(std::filesystem::remove(filename), "Failed to remove " + filename);
+}
+
 void* MmapMemoryResource::do_allocate(size_t bytes, size_t alignment) {
-  // round _upper_file_pos to possibly new alignment
-  const auto return_offset = upper_file_pos + upper_file_pos % alignment;
+  // round return_offset to possibly new alignment
+  auto return_offset = upper_file_pos + (alignment - 1);
+  return_offset -= return_offset % alignment;
+
   const auto new_upper_file_pos = return_offset + bytes;
   Assert(new_upper_file_pos < file_size, "Not enough free memory in mmap file.");
 

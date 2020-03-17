@@ -8,6 +8,7 @@
 namespace opossum::anticaching {
 
 class MmapMemoryResource : private Noncopyable, public boost::container::pmr::memory_resource {
+  friend class MmapMemoryResourceTest;
  public:
   MmapMemoryResource(const std::string& filename, size_t file_size);
   ~MmapMemoryResource() override;
@@ -17,13 +18,16 @@ class MmapMemoryResource : private Noncopyable, public boost::container::pmr::me
 
   size_t upper_file_pos = 0ul;
 
-  char* map_pointer() const;
+  char* mmap_pointer() const;
   int file_descriptor() const;
+
+  void close_and_delete_file();
 
  private:
   char* _mmap_pointer;
   int _file_descriptor = -1;
 
+  void _close_file();
 
   void* do_allocate(size_t bytes, size_t alignment) override;
 

@@ -2,8 +2,7 @@
 
 #include <boost/interprocess/mapped_region.hpp>
 #include <sys/mman.h>
-
-#include "umap.h"
+#include <umap.h>
 
 namespace opossum::anticaching {
 
@@ -27,12 +26,12 @@ std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
 
   auto mmap_position_after_allocation = _mmap_memory_resource.upper_file_pos;
 
-  Assert(!msync(_mmap_memory_resource.map_pointer() + mmap_position_before_allocation,
+  Assert(!msync(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation,
                 mmap_position_after_allocation - mmap_position_before_allocation, MS_SYNC),
          "msync failed with errno: " + std::to_string(errno));
 
   // remap using umap
-  Assert(umap(_mmap_memory_resource.map_pointer(), mmap_position_after_allocation, PROT_READ,
+  Assert(umap(_mmap_memory_resource.mmap_pointer(), mmap_position_after_allocation, PROT_READ,
        UMAP_PRIVATE | UMAP_FIXED, _mmap_memory_resource.file_descriptor(), 0) != UMAP_FAILED,
          "Umap failed with errno: " + std::to_string(errno));
 
