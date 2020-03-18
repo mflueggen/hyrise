@@ -59,7 +59,7 @@ std::shared_ptr<BaseSegment> FixedStringDictionarySegment<T>::copy_using_allocat
   auto new_attribute_vector = _attribute_vector->copy_using_allocator(alloc);
   auto new_dictionary = std::make_shared<FixedStringVector>(*_dictionary);
   auto copy = std::make_shared<FixedStringDictionarySegment<T>>(new_dictionary, std::move(new_attribute_vector));
-  copy->access_counter.set_counter_values(access_counter);
+  copy->access_counter = access_counter;
   return copy;
 }
 

@@ -57,7 +57,7 @@ std::shared_ptr<BaseSegment> FrameOfReferenceSegment<T, U>::copy_using_allocator
 
   auto copy = std::make_shared<FrameOfReferenceSegment>(std::move(new_block_minima), std::move(new_null_values),
                                                    std::move(new_offset_values));
-  copy->access_counter.set_counter_values(access_counter);
+  copy->access_counter = access_counter;
   return copy;
 }
 

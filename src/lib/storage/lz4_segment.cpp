@@ -440,7 +440,7 @@ std::shared_ptr<BaseSegment> LZ4Segment<T>::copy_using_allocator(const Polymorph
                                         std::move(new_dictionary), _block_size, _last_block_size, _compressed_size,
                                         _num_elements);
   }
-  copy->access_counter.set_counter_values(access_counter);
+  copy->access_counter = access_counter;
   return copy;
 }
 

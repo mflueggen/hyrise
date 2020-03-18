@@ -102,7 +102,7 @@ std::vector<SegmentInfo> AntiCachingPlugin::_fetch_current_statistics() {
                                    segment_id_segment_ptr_pair.second->memory_usage(
                                      MemoryUsageCalculationMode::Sampled),
                                    segment_id_segment_ptr_pair.second->size(),
-                                   segment_id_segment_ptr_pair.second->access_counter.counter());
+                                   segment_id_segment_ptr_pair.second->access_counter);
   }
   return access_statistics;
 }
@@ -184,8 +184,8 @@ AntiCachingPlugin::_select_segment_information_for_value_computation(
   for (const auto& segment_info : current) {
     const auto& prev_segment_info = segment_infos.find(segment_info.segment_id);
     if (prev_segment_info != segment_infos.cend()) {
-      return_vector.emplace_back(segment_info.segment_id, segment_info.memory_usage, segment_info.size,
-                                 segment_info.access_counter - prev_segment_info->second.access_counter);
+//      return_vector.emplace_back(segment_info.segment_id, segment_info.memory_usage, segment_info.size,
+//                                 segment_info.access_counter - prev_segment_info->second.access_counter);
     } else {
       return_vector.push_back(segment_info);
     }
@@ -195,17 +195,18 @@ AntiCachingPlugin::_select_segment_information_for_value_computation(
 
 float AntiCachingPlugin::_compute_value(const SegmentInfo& segment_info) {
   // data type spielt vermutlich auch eine Rolle
-  const auto& counter = segment_info.access_counter;
-  const auto seq_access_factor = 1.0f;
-  const auto seq_increasing_access_factor = 1.2f;
-  const auto rnd_access_factor = 900'000.0f / 350'000.0f;
-  const auto accessor_access_factor = rnd_access_factor;
-  const auto dictionary_access_factor = 0.0f;
+//  const auto& counter = segment_info.access_counter;
+//  const auto seq_access_factor = 1.0f;
+//  const auto seq_increasing_access_factor = 1.2f;
+//  const auto rnd_access_factor = 900'000.0f / 350'000.0f;
+//  const auto accessor_access_factor = rnd_access_factor;
+//  const auto dictionary_access_factor = 0.0f;
   // Zugriffe * Zugriffsart // faktor für zugriffsart
-  return counter.accessor_access * accessor_access_factor + counter.iterator_seq_access * seq_access_factor +
-         counter.iterator_increasing_access + seq_increasing_access_factor +
-         counter.iterator_random_access * rnd_access_factor +
-         counter.other * rnd_access_factor + counter.dictionary_access * dictionary_access_factor;
+//  return counter.accessor_access * accessor_access_factor + counter.iterator_seq_access * seq_access_factor +
+//         counter.iterator_increasing_access + seq_increasing_access_factor +
+//         counter.iterator_random_access * rnd_access_factor +
+//         counter.other * rnd_access_factor + counter.dictionary_access * dictionary_access_factor;
+  return 0;
 }
 
 /**
@@ -250,11 +251,6 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
   _for_all_segments(Hyrise::get().storage_manager.tables(), false, [&](const SegmentID segment_id,
                                                                        const std::shared_ptr<BaseSegment> segment_ptr) {
 
-    // TODO: Currently just an assertion. Will be removed
-    if (segment_ptr->access_counter.counter().sum() > 10'000'000'000ul) {
-      std::cout << "AccessCount too big.\n";
-    }
-
     // copy segments from secondary memory to main memory
     if (in_memory_segment_ids_set.contains(segment_id)) {
       // make sure it is in memory
@@ -270,7 +266,8 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
         _evicted_segments.erase(evicted_segment);
         _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d, size: %d) moved to memory.") %
                    segment_id.table_name % segment_id.column_name %
-                   segment_id.chunk_id % segment_ptr->access_counter.counter().sum() %
+                   // TODO: FIX
+                   0 % //segment_id.chunk_id % segment_ptr->access_counter.counter().sum() %
                    segment_size).str());
         bytes_restored += segment_size;
       }
@@ -304,7 +301,8 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
         _evicted_segments.insert(segment_id);
         _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d, size: %d) evicted.") %
                    segment_id.table_name % segment_id.column_name %
-                   segment_id.chunk_id % segment_ptr->access_counter.counter().sum() %
+                   // TODO: FIX
+                   0 % //segment_id.chunk_id % segment_ptr->access_counter.counter().sum() %
                    segment_size).str());
         bytes_evicted += segment_size;
       }
@@ -326,38 +324,38 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
 
 void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta_data,
                                                  const std::string& path_to_access_statistics) {
-  uint32_t entry_id_counter = 0u;
+//  uint32_t entry_id_counter = 0u;
 
-  std::ofstream meta_file{path_to_meta_data};
-  std::ofstream output_file{path_to_access_statistics};
-  std::unordered_map<SegmentID, uint32_t, anticaching::SegmentIDHasher> segment_id_entry_id_map;
+//  std::ofstream meta_file{path_to_meta_data};
+//  std::ofstream output_file{path_to_access_statistics};
+//  std::unordered_map<SegmentID, uint32_t, anticaching::SegmentIDHasher> segment_id_entry_id_map;
 
-  meta_file << "entry_id,table_name,column_name,chunk_id,row_count,EstimatedMemoryUsage\n";
-  output_file << "entry_id," + SegmentAccessCounter::Counter<uint64_t>::HEADERS + "\n";
+//  meta_file << "entry_id,table_name,column_name,chunk_id,row_count,EstimatedMemoryUsage\n";
+//  output_file << "entry_id," + SegmentAccessCounter::Counter<uint64_t>::HEADERS + "\n";
+//
+//  for (const auto& timestamp_segment_info_pair : _access_statistics) {
+//    const auto& timestamp = timestamp_segment_info_pair.first;
+//    const auto elapsed_time = timestamp - _initialization_time;
+//    const auto& segment_infos = timestamp_segment_info_pair.second;
+//    for (const auto& segment_info : segment_infos) {
+//      const auto stored_entry_id_it = segment_id_entry_id_map.find(segment_info.segment_id);
+//      uint32_t entry_id = 0u;
+//      if (stored_entry_id_it != segment_id_entry_id_map.cend()) entry_id = stored_entry_id_it->second;
+//      else {
+//        entry_id = entry_id_counter++;
+//        // TODO: size and memory_usage are only written once and never updated. This should be changed in the future.
+//        meta_file << entry_id << ',' << segment_info.segment_id.table_name << ',' << segment_info.segment_id.column_name
+//                  << ',' << segment_info.segment_id.chunk_id << ',' << segment_info.size << ','
+//                  << segment_info.memory_usage << '\n';
+//      }
+//      output_file << entry_id << ','
+//                  << std::chrono::duration_cast<std::chrono::seconds>(elapsed_time).count()
+//                  << segment_info.access_counter.to_string() << '\n';
+//    }
+//  }
 
-  for (const auto& timestamp_segment_info_pair : _access_statistics) {
-    const auto& timestamp = timestamp_segment_info_pair.first;
-    const auto elapsed_time = timestamp - _initialization_time;
-    const auto& segment_infos = timestamp_segment_info_pair.second;
-    for (const auto& segment_info : segment_infos) {
-      const auto stored_entry_id_it = segment_id_entry_id_map.find(segment_info.segment_id);
-      uint32_t entry_id = 0u;
-      if (stored_entry_id_it != segment_id_entry_id_map.cend()) entry_id = stored_entry_id_it->second;
-      else {
-        entry_id = entry_id_counter++;
-        // TODO: size and memory_usage are only written once and never updated. This should be changed in the future.
-        meta_file << entry_id << ',' << segment_info.segment_id.table_name << ',' << segment_info.segment_id.column_name
-                  << ',' << segment_info.segment_id.chunk_id << ',' << segment_info.size << ','
-                  << segment_info.memory_usage << '\n';
-      }
-      output_file << entry_id << ','
-                  << std::chrono::duration_cast<std::chrono::seconds>(elapsed_time).count()
-                  << segment_info.access_counter.to_string() << '\n';
-    }
-  }
-
-  meta_file.close();
-  output_file.close();
+//  meta_file.close();
+//  output_file.close();
 }
 
 void AntiCachingPlugin::_log_line(const std::string& text) {
