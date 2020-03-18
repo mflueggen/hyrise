@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <map>
 #include <memory>
@@ -9,104 +10,70 @@
 #include "types.hpp"
 
 namespace opossum {
-class Table;
 
+// The SegmentAccessCounter is a collection of counters to count how often a segment is accessed.
+// It contains several counters (see AccessType) to differentiate between different access types, like
+// sequential or random access. The individual counters can be accessed using the [] operator.
+// The counters are currently updated by the iterators, segment accessors or from within the segment itself.
 class SegmentAccessCounter {
   friend class SegmentAccessCounterTest;
 
  public:
-  template <typename T>
-  class Counter {
-   public:
-    T other;
-    T iterator_create;
-    T iterator_seq_access;
-    T iterator_increasing_access;
-    T iterator_random_access;
-    T accessor_create;
-    T accessor_access;
-    T dictionary_access;
+  using CounterType = std::atomic_uint64_t;
 
-    Counter();
-
-    Counter(uint64_t other, uint64_t iterator_create, uint64_t iterator_seq_access, uint64_t iterator_increasing_access,
-            uint64_t iterator_random_access, uint64_t accessor_create, uint64_t accessor_access,
-            uint64_t dictionary_access);
-
-    Counter(const Counter<T>& counter);
-
-    void reset();
-
-    T sum() const;
-
-    Counter<T> operator+(const Counter<T>& counter) const;
-
-    Counter<T> operator-(const Counter<T>& counter) const;
-
-    std::string to_string() const;
-
-    inline static const std::string HEADERS =
-      "Other,IteratorCreate,IteratorSeqAccess,IteratorIncreasingAccess,"
-      "IteratorRandomAccess,AccessorCreate,AccessorAccess,"
-      "DictionaryAccess";
+  enum class AccessType {
+    Point /* Single point access */,
+    Sequential /* 0, 1, 1, 2, 3, 4 */,
+    Monotonic /* 0, 0, 1, 2, 4, 8, 17 */,
+    Random /* 0, 1, 0, 42 */,
+    Dictionary /* Used to count accesses to the dictionary of the dictionary segment */,
+    Count /* Dummy entry to describe the number of elements in this enum class. */
   };
 
-  void on_iterator_create(uint64_t count);
+  inline static const std::map<AccessType, const char*> access_type_string_mapping = {
+      {AccessType::Point, "Point"},
+      {AccessType::Sequential, "Sequential"},
+      {AccessType::Monotonic, "Monotonic"},
+      {AccessType::Random, "Random"},
+      {AccessType::Dictionary, "Dictionary"}};
 
-  void on_iterator_create(const std::shared_ptr<const PosList>& positions);
+  SegmentAccessCounter();
+  SegmentAccessCounter(const SegmentAccessCounter& other);
+  SegmentAccessCounter& operator=(const SegmentAccessCounter& other);
 
-  void on_accessor_create(uint64_t count);
+  CounterType& operator[](const AccessType type);
+  const CounterType& operator[](const AccessType type) const;
 
-  void on_accessor_access(uint64_t count, ChunkOffset chunk_offset);
+  // For a given position list, this determines whether its entries are in sequential, monotonic, or random order.
+  // It only looks at the first n values.
+  static AccessType access_type(const PosList& positions);
 
-  void on_dictionary_access(uint64_t count);
-
-  void on_other_access(uint64_t count);
-
-  void reset();
-
-  void set_counter_values(uint64_t other, uint64_t iterator_create, uint64_t iterator_seq_access,
-                          uint64_t iterator_increasing_access, uint64_t iterator_random_access,
-                          uint64_t accessor_create, uint64_t accessor_access, uint64_t dictionary_access);
-
-  void set_counter_values(const Counter<uint64_t>& counter);
-
-  void set_counter_values(const SegmentAccessCounter& counter);
-
-  Counter<uint64_t> counter() const;
-
-  static void reset(const std::map<std::string, std::shared_ptr<Table>>& tables);
+  std::string to_string() const;
 
  private:
-  Counter<std::atomic_uint64_t> _counter;
+  std::array<CounterType, static_cast<size_t>(AccessType::Count)> _counters = {};
 
-  // For access pattern analysis: The following enums are used to determine how an iterator iterates over its elements.
-  // This is done by analysing the first elements in a given PosList and a state machine, defined below.
+  // For access pattern analysis: The following enum is used used to determine how an iterator iterates over its
+  // elements. This is done by analysing the first elements in a given PosList and a state machine, defined below.
   // There are six AccessPatterns:
-  // 0 (unknown), equivalent to IteratorSeqAccess
+  // 0 (point access), an empty sequence or a sequence accessing only a single point
   // 1 (sequentially increasing), difference between two neighboring elements is 0 or 1.
-  // 2 (increasing randomly)
+  // 2 (randomly increasing)
   // 3 (sequentially decreasing), difference between two neighboring elements is -1 or 0.
-  // 4 (decreasing randomly)
+  // 4 (randomly decreasing)
   // 5 (random access)
   enum class AccessPattern {
-    Unknown, SeqInc, RndInc, SeqDec, RndDec, Rnd
-  };
-  // There are five possible inputs
-  enum class Input {
-    Zero, One, Positive, NegativeOne, Negative
+    Point,
+    SequentiallyIncreasing,
+    RandomlyIncreasing,
+    SequentiallyDecreasing,
+    RandomlyDecreasing,
+    Random
   };
 
-  constexpr static const std::array<std::array<AccessPattern, 5 /*|Input|*/>, 6 /*|AccessPattern|*/> _transitions{
-    {{AccessPattern::Unknown, AccessPattern::SeqInc, AccessPattern::SeqInc, AccessPattern::SeqDec,
-       AccessPattern::SeqDec},
-      {AccessPattern::SeqInc, AccessPattern::SeqInc, AccessPattern::RndInc, AccessPattern::Rnd, AccessPattern::Rnd},
-      {AccessPattern::RndInc, AccessPattern::RndInc, AccessPattern::RndInc, AccessPattern::Rnd, AccessPattern::Rnd},
-      {AccessPattern::SeqDec, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::SeqDec, AccessPattern::RndDec},
-      {AccessPattern::RndDec, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::RndDec, AccessPattern::RndDec},
-      {AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd, AccessPattern::Rnd}}};
+  static AccessPattern _access_pattern(const PosList& positions);
 
-  static AccessPattern _iterator_access_pattern(const std::shared_ptr<const PosList>& positions);
+  void _set_counters(const SegmentAccessCounter& counter);
 };
 
 }  // namespace opossum
