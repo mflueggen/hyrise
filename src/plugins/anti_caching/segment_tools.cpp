@@ -18,10 +18,6 @@ size_t SegmentTools::row_count(EncodingType encoding_type) {
   }
 }
 
-std::shared_ptr<ValueSegment<int32_t>> SegmentTools::create_int_value_segment() {
-  return create_int_value_segment(DEFAULT_ROW_COUNT);
-}
-
 std::shared_ptr<ValueSegment<int32_t>> SegmentTools::create_int_value_segment(size_t row_count) {
   auto values = pmr_vector<int32_t>(row_count);
 
@@ -33,10 +29,6 @@ std::shared_ptr<ValueSegment<int32_t>> SegmentTools::create_int_value_segment(si
   }
 
   return std::make_shared<ValueSegment<int32_t>>(std::move(values));
-}
-
-std::shared_ptr<ValueSegment<int32_t>> SegmentTools::create_int_with_null_value_segment() {
-  return create_int_with_null_value_segment(row_count());
 }
 
 std::shared_ptr<ValueSegment<int32_t>> SegmentTools::create_int_with_null_value_segment(size_t row_count) {
@@ -55,10 +47,6 @@ std::shared_ptr<ValueSegment<int32_t>> SegmentTools::create_int_with_null_value_
   return std::make_shared<ValueSegment<int32_t>>(std::move(values), std::move(null_values));
 }
 
-std::shared_ptr<PosList> SegmentTools::create_sequential_position_filter() {
-  return create_sequential_position_filter(row_count());
-}
-
 std::shared_ptr<PosList> SegmentTools::create_sequential_position_filter(size_t row_count) {
   auto list = std::make_shared<PosList>();
   list->guarantee_single_chunk();
@@ -73,10 +61,6 @@ std::shared_ptr<PosList> SegmentTools::create_sequential_position_filter(size_t 
   }
 
   return list;
-}
-
-std::shared_ptr<PosList> SegmentTools::create_random_access_position_filter() {
-  return create_random_access_position_filter(row_count());
 }
 
 std::shared_ptr<PosList> SegmentTools::create_random_access_position_filter(size_t row_count) {
