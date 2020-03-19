@@ -13,7 +13,14 @@ namespace opossum::anticaching {
 class UmapSegmentManager: public AbstractSegmentManager {
  public:
   UmapSegmentManager(const std::string& filename, const size_t file_size);
-  std::shared_ptr<BaseSegment> store(SegmentID segment_id, const std::shared_ptr<BaseSegment>& segment) override;
+  ~UmapSegmentManager() override;
+  UmapSegmentManager(UmapSegmentManager&&) = delete; // WHY?
+  UmapSegmentManager& operator=(UmapSegmentManager&&) = delete; // WHY?
+
+  std::shared_ptr<BaseSegment> store(SegmentID segment_id, const BaseSegment& segment) override;
+
+  bool delete_file_on_destruction = true;
+
 
  private:
   MmapMemoryResource _mmap_memory_resource;

@@ -12,6 +12,8 @@ class MmapMemoryResource : private Noncopyable, public boost::container::pmr::me
  public:
   MmapMemoryResource(const std::string& filename, size_t file_size);
   ~MmapMemoryResource() override;
+  MmapMemoryResource(MmapMemoryResource&&) = delete; // WHY?
+  MmapMemoryResource& operator=(MmapMemoryResource&&) = delete; // WHY?
 
   const std::string filename;
   const size_t file_size;

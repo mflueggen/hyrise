@@ -13,7 +13,7 @@ class AbstractSegmentManager: private Noncopyable {
   virtual ~AbstractSegmentManager() = default;
 
   virtual std::shared_ptr<BaseSegment> load(const SegmentID& segment_id);
-  virtual std::shared_ptr<BaseSegment> store(SegmentID segment_id, const std::shared_ptr<BaseSegment>& segment) = 0;
+  virtual std::shared_ptr<BaseSegment> store(SegmentID segment_id, const BaseSegment& segment) = 0;
   virtual bool remove(const SegmentID& segment_id);
 
  protected:

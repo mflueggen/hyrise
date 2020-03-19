@@ -12,7 +12,7 @@ namespace opossum::anticaching {
 class PmrSegmentManager: public AbstractSegmentManager {
  public:
   PmrSegmentManager(boost::container::pmr::memory_resource& memory_resource);
-  std::shared_ptr<BaseSegment> store(SegmentID segment_id, const std::shared_ptr<BaseSegment>& segment) override;
+  std::shared_ptr<BaseSegment> store(SegmentID segment_id, const BaseSegment& segment) override;
 
  private:
   boost::container::pmr::memory_resource& _memory_resource;

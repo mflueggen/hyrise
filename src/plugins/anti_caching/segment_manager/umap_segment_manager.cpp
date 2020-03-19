@@ -10,17 +10,17 @@ UmapSegmentManager::UmapSegmentManager(const std::string& filename, const size_t
   : _mmap_memory_resource{filename, file_size} { }
 
 std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
-                                                      const std::shared_ptr<BaseSegment>& segment) {
-  Assert(_active_segments.find(segment_id) != _active_segments.cend(), "Segment with segment_id(" +
+                                                      const BaseSegment& segment) {
+  Assert(_active_segments.find(segment_id) == _active_segments.cend(), "Segment with segment_id(" +
     segment_id.to_string() + ") already exists as active segment.");
-  Assert(_cached_segments.find(segment_id) != _cached_segments.cend(), "Segment with segment_id(" +
+  Assert(_cached_segments.find(segment_id) == _cached_segments.cend(), "Segment with segment_id(" +
     segment_id.to_string() + ") already exists as cached segment.");
 
   const auto umap_page_size = umapcfg_get_umap_page_size();
   const auto mmap_position_before_allocation = _mmap_memory_resource.upper_file_pos;
 
   // todo: refactor, maybe?
-  auto copy = segment->copy_using_allocator(&_mmap_memory_resource);
+  auto copy = segment.copy_using_allocator(&_mmap_memory_resource);
   _cached_segments[segment_id] = copy;
   _active_segments.insert({std::move(segment_id), copy});
 
@@ -45,6 +45,19 @@ std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
   _mmap_memory_resource.upper_file_pos = new_upper_file_pos;
 
   return copy;
+}
+
+UmapSegmentManager::~UmapSegmentManager() {
+  std::cout << "Destroying UmapSegmentManager." << std::endl;
+  _active_segments.clear();
+  _cached_segments.clear();
+  if (_mmap_memory_resource.upper_file_pos > 0) {
+    Assert(uunmap(_mmap_memory_resource.mmap_pointer(), _mmap_memory_resource.upper_file_pos) >= 0,
+           "uunmap failed with errno=" + std::to_string(errno));
+  }
+  if (delete_file_on_destruction) {
+    _mmap_memory_resource.close_and_delete_file();
+  }
 }
 
 } // opossum::anticaching

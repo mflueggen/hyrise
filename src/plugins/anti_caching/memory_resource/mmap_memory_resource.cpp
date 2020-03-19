@@ -28,7 +28,7 @@ MmapMemoryResource::MmapMemoryResource(const std::string& filename, size_t file_
 }
 
 MmapMemoryResource::~MmapMemoryResource() {
-  _close_file();
+//  _close_file();
 }
 
 char* MmapMemoryResource::mmap_pointer() const {

@@ -13,7 +13,7 @@ namespace opossum::anticaching {
 
 class MmapMemoryResourceTest : public BaseTest {
  public:
-  MmapMemoryResourceTest() : _mmap_memory_resource{MmapMemoryResourceTest::FILENAME, FILE_SIZE} {
+  MmapMemoryResourceTest() : _mmap_memory_resource{FILENAME, FILE_SIZE} {
   }
 
   ~MmapMemoryResourceTest() {
@@ -41,12 +41,12 @@ TEST_F(MmapMemoryResourceTest, CloseAndDelete) {
 }
 
 TEST_F(MmapMemoryResourceTest, FileSize) {
-  ASSERT_EQ(_mmap_memory_resource.file_size, MmapMemoryResourceTest::FILE_SIZE);
-  ASSERT_EQ(std::filesystem::file_size(FILENAME), MmapMemoryResourceTest::FILE_SIZE);
+  ASSERT_EQ(_mmap_memory_resource.file_size, FILE_SIZE);
+  ASSERT_EQ(std::filesystem::file_size(FILENAME), FILE_SIZE);
 }
 
 TEST_F(MmapMemoryResourceTest, FileName) {
-  ASSERT_EQ(_mmap_memory_resource.filename, MmapMemoryResourceTest::FILENAME);
+  ASSERT_EQ(_mmap_memory_resource.filename, FILENAME);
 }
 
 TEST_F(MmapMemoryResourceTest, FileDescriptor) {
