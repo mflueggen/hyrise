@@ -108,16 +108,16 @@ TEST_F(SegmentManagerTest, Load) {
   const auto segment_id2 = SegmentID{"table", ChunkID{2}, ColumnID{0}, "column"};
 
   auto stored_segment1 = segment_manager->load(segment_id1);
-  ASSERT_EQ(*stored_segment1, nullptr);
+  ASSERT_FALSE(stored_segment1);
 
   auto stored_segment2 = segment_manager->load(segment_id2);
-  ASSERT_EQ(*stored_segment2, nullptr);
+  ASSERT_FALSE(stored_segment2);
 
   segment_manager->store(segment_id1, *SegmentTools::create_int_value_segment(DEFAULT_ROW_COUNT));
-  ASSERT_NE(*segment_manager->load(segment_id1), nullptr);
+  ASSERT_TRUE(segment_manager->load(segment_id1));
 
   segment_manager->store(segment_id2, *SegmentTools::create_int_value_segment(DEFAULT_ROW_COUNT));
-  ASSERT_NE(*segment_manager->load(segment_id2), nullptr);
+  ASSERT_TRUE(segment_manager->load(segment_id2));
 }
 
 

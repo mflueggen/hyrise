@@ -3,6 +3,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(
     hyriseMicroBenchmarks
 
+    ../plugins/anti_caching/segment_tools.cpp
+    ../plugins/anti_caching/segment_tools.hpp
     micro_benchmark_basic_fixture.cpp
     micro_benchmark_basic_fixture.hpp
     micro_benchmark_main.cpp
@@ -18,6 +20,7 @@ add_executable(
     operators/table_scan_benchmark.cpp
     operators/table_scan_sorted_benchmark.cpp
     operators/union_all_benchmark.cpp
+    storage_and_encoding_type_benchmark.cpp
     tpch_data_micro_benchmark.cpp
     tpch_table_generator_benchmark.cpp
 )
