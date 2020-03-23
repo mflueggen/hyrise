@@ -3,8 +3,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(
     hyriseMicroBenchmarks
 
-    ../plugins/anti_caching/segment_tools.cpp
-    ../plugins/anti_caching/segment_tools.hpp
     micro_benchmark_basic_fixture.cpp
     micro_benchmark_basic_fixture.hpp
     micro_benchmark_main.cpp
@@ -31,6 +29,7 @@ target_link_libraries(
     hyrise
     hyriseBenchmarkLib
     benchmark
+    AntiCachingPlugin
 )
 
 add_executable(

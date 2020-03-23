@@ -31,8 +31,8 @@ class SegmentManagerTest : public BaseTest {
 
   inline static const std::string FILENAME = "umap_test_pool";
   inline static const size_t FILE_SIZE = 10ul * 1024 * 1024;
-  // So segments will be around 1MB
-  static const size_t DEFAULT_ROW_COUNT = 256ul * 1024;
+  // So segments will be around 1MB. +1 To make sure we are not a multiple of the page size (4096)
+  static const size_t DEFAULT_ROW_COUNT = 256ul * 1024 + 1;
 
  protected:
   std::unique_ptr<UmapSegmentManager> _create_segment_manager() {

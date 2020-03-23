@@ -25,6 +25,10 @@ std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
   _active_segments.insert({std::move(segment_id), copy});
 
   auto mmap_position_after_allocation = _mmap_memory_resource.upper_file_pos;
+  // mmap_position_after_allocation has to be divisible bei umap_page_size
+  // We round up using some serious bit magic. This works because umap_page_size is a power of 2.
+  mmap_position_after_allocation += (umap_page_size - 1);
+  mmap_position_after_allocation &= ~(umap_page_size - 1);
 
   Assert(!msync(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation,
                 mmap_position_after_allocation - mmap_position_before_allocation, MS_SYNC),
@@ -38,7 +42,6 @@ std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
   // set upper_file_pos accordingly round up to (page_size + umap page size)
   auto new_upper_file_pos = mmap_position_after_allocation + umap_page_size;
   // umap will actually reserve (mmap_position_after_allocation + umap_page_size), rounded up to umap_page_size, bytes.
-  // We round up using some serious bit magic. This works because umap_page_size is a power of 2.
   new_upper_file_pos += (umap_page_size - 1);
   new_upper_file_pos &= ~(umap_page_size - 1);
 
@@ -48,7 +51,6 @@ std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
 }
 
 UmapSegmentManager::~UmapSegmentManager() {
-  std::cout << "Destroying UmapSegmentManager." << std::endl;
   _active_segments.clear();
   _cached_segments.clear();
   if (_mmap_memory_resource.upper_file_pos > 0) {
