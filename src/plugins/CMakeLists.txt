@@ -35,8 +35,9 @@ add_plugin(NAME hyriseTestPlugin SRCS test_plugin.cpp test_plugin.hpp)
 add_plugin(NAME hyriseTestNonInstantiablePlugin SRCS non_instantiable_plugin.cpp)
 
 set(UMAP_ROOT "~/umap/bin")
+set(PMDK_DIR "~/pmdk/bin")
 find_library(UMAP_LIB umap HINTS ${UMAP_ROOT}/lib)
-find_library(PMEMOBJ_LIB pmemobj HINTS /usr/local/lib)
+find_library(PMEMOBJ_LIB pmemobj HINTS ${PMDK_DIR}/lib)
 add_plugin(NAME AntiCachingPlugin
     SRCS
     anti_caching/anti_caching_config.cpp
@@ -71,7 +72,7 @@ target_include_directories(AntiCachingPlugin PRIVATE
     ${UMAP_ROOT}/include
     ${UMAP_ROOT}/include/umap
     ${UMAP_ROOT}/include/umap/store
-    /usr/local/include)
+    ${PMDK_DIR}/include)
 
 
 # We define TEST_PLUGIN_DIR to always load plugins from the correct directory for testing purposes
