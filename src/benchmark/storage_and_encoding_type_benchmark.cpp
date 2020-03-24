@@ -49,26 +49,6 @@ class StorageAndEncodingTypeBenchmark : public MicroBenchmarkBasicFixture {
     std::filesystem::remove(MAPPING_FILE);
   }
 
-  void BM_SequentialAccess(benchmark::State& state) {
-    for (auto _ : state) {
-      auto sum = 0ul;
-      auto iterable = create_iterable_from_segment(*_value_segment);
-      iterable.for_each(_sequential_access_pattern, [&](const auto element) {
-        benchmark::DoNotOptimize(sum += element.value());
-      });
-    }
-  }
-
-  void BM_RandomAccess(benchmark::State& state) {
-    for (auto _ : state) {
-      auto sum = 0ul;
-      auto iterable = create_iterable_from_segment(*_value_segment);
-      iterable.for_each(_random_access_pattern, [&](const auto element) {
-        benchmark::DoNotOptimize(sum += element.value());
-      });
-    }
-  }
-
   void BM_EncodedAccess(benchmark::State& state) {
     for (auto _ : state) {
       auto sum = 0ul;
@@ -79,19 +59,6 @@ class StorageAndEncodingTypeBenchmark : public MicroBenchmarkBasicFixture {
         benchmark::DoNotOptimize(sum += element.value());
       });
     }
-  }
-
-  void BM_Generic(benchmark::State& state, const EncodingType encoding_type, const bool sequential) {
-    const auto pos_list = sequential ? _sequential_access_pattern : _random_access_pattern;
-    if (encoding_type == EncodingType::Unencoded) {
-      benchmark_segment_access<decltype(*_value_segment)>(state, *_value_segment, pos_list);
-      return;
-    }
-
-    auto base_encoded_segment = SegmentTools::encode_segment(_value_segment, DataType::Int, encoding_type);
-    resolve_encoded_segment_type<T>(*base_encoded_segment, [&](const auto& encoded_segment) {
-      benchmark_segment_access<decltype(encoded_segment)>(state, encoded_segment, pos_list);
-    });
   }
 
   template<class SegmentType>
@@ -106,6 +73,15 @@ class StorageAndEncodingTypeBenchmark : public MicroBenchmarkBasicFixture {
     }
   }
 
+  void BM_Store(benchmark::State& state) {
+    for (auto _ : state) {
+      auto segment_manager = UmapSegmentManager(MAPPING_FILE, MAPPING_FILE_SIZE);
+      segment_manager.delete_file_on_destruction = false;
+      std::shared_ptr<BaseSegment> stored_segment{nullptr};
+      benchmark::DoNotOptimize(stored_segment = segment_manager.store(_default_segment_id, *_value_segment));
+    }
+  }
+
  protected:
   std::shared_ptr<ValueSegment<T>> _value_segment;
   std::shared_ptr<PosList> _sequential_access_pattern;
@@ -114,13 +90,7 @@ class StorageAndEncodingTypeBenchmark : public MicroBenchmarkBasicFixture {
 
 };
 
-//BENCHMARK_F(StorageAndEncodingTypeBenchmark, BM_SequentialAccess)(benchmark::State& st) { BM_SequentialAccess(st); }
-//
-//BENCHMARK_F(StorageAndEncodingTypeBenchmark, BM_RandomAccess)(benchmark::State& st) { BM_RandomAccess(st); }
-//
-//BENCHMARK_F(StorageAndEncodingTypeBenchmark, BM_EncodedAccess)(benchmark::State& st) { BM_EncodedAccess(st); }
-
-//BENCHMARK_F(StorageAndEncodingTypeBenchmark, BM_Generic)(benchmark::State& st) { BM_Generic(st, EncodingType::Unencoded, true); }
+BENCHMARK_F(StorageAndEncodingTypeBenchmark, BM_Store)(benchmark::State& st) { BM_Store(st); }
 
 BENCHMARK_DEFINE_F(StorageAndEncodingTypeBenchmark, BM_Generic)(benchmark::State& st) {
   const auto encoding_type = encoding_type_enum_values[st.range(0)];
