@@ -30,23 +30,31 @@ class SegmentAccessCounter {
     Count /* Dummy entry to describe the number of elements in this enum class. */
   };
 
+  static constexpr const std::array<AccessType, static_cast<size_t>(AccessType::Count)> AccessTypes{AccessType::Point,
+    AccessType::Sequential, AccessType::Monotonic, AccessType::Random, AccessType::Dictionary};
+
   inline static const std::map<AccessType, const char*> access_type_string_mapping = {
-      {AccessType::Point, "Point"},
-      {AccessType::Sequential, "Sequential"},
-      {AccessType::Monotonic, "Monotonic"},
-      {AccessType::Random, "Random"},
-      {AccessType::Dictionary, "Dictionary"}};
+    {AccessType::Point,      "Point"},
+    {AccessType::Sequential, "Sequential"},
+    {AccessType::Monotonic,  "Monotonic"},
+    {AccessType::Random,     "Random"},
+    {AccessType::Dictionary, "Dictionary"}};
 
   SegmentAccessCounter();
+
   SegmentAccessCounter(const SegmentAccessCounter& other);
+
   SegmentAccessCounter& operator=(const SegmentAccessCounter& other);
 
   CounterType& operator[](const AccessType type);
+
   const CounterType& operator[](const AccessType type) const;
 
   // For a given position list, this determines whether its entries are in sequential, monotonic, or random order.
   // It only looks at the first n values.
   static AccessType access_type(const PosList& positions);
+
+  SegmentAccessCounter operator-(const SegmentAccessCounter& other) const;
 
   std::string to_string() const;
 

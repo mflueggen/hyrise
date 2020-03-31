@@ -14,10 +14,12 @@
 #include "utils/abstract_plugin.hpp"
 #include "utils/pausable_loop_thread.hpp"
 #include "segment_id.hpp"
+#include "storage/segment_access_counter.hpp"
 #include "segment_info.hpp"
 #include "storage/base_segment.hpp"
 #include "storage/table.hpp"
 #include "types.hpp"
+#include "segment_manager/abstract_segment_manager.hpp"
 
 namespace opossum::anticaching {
 
@@ -37,7 +39,7 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   using TimestampSegmentInfosPair = std::pair<const std::chrono::time_point<std::chrono::steady_clock>, std::vector<SegmentInfo>>;
 
-  void export_access_statistics(const std::string& path_to_meta_data, const std::string& path_to_access_statistics);
+  void export_access_statistics(const std::string& path_to_meta_data, const std::string& path_to_access_statistics) const;
 
   void reset_access_statistics();
 
@@ -68,16 +70,25 @@ class AntiCachingPlugin : public AbstractPlugin {
 
   void _log_line(const std::string& text);
 
+  static uint64_t _sum(const SegmentAccessCounter& counter);
+
+
+
+  const std::chrono::time_point<std::chrono::steady_clock> _initialization_time{std::chrono::steady_clock::now()};
+
   const AntiCachingConfig _config;
   std::ofstream _log_file;
-  size_t _memory_resource_handle;
   std::unordered_set<SegmentID, SegmentIDHasher> _evicted_segments;
   std::unordered_map<SegmentID, std::shared_ptr<BaseSegment>, SegmentIDHasher> _persisted_segments;
+  std::unique_ptr<AbstractSegmentManager> _segment_manager = nullptr;
+
+
+
 
   std::vector<TimestampSegmentInfosPair> _access_statistics;
   std::unique_ptr<PausableLoopThread> _evaluate_statistics_thread;
 
-  const std::chrono::time_point<std::chrono::steady_clock> _initialization_time{std::chrono::steady_clock::now()};
+
 };
 
 }  // namespace opossum::anticaching

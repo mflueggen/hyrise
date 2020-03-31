@@ -19,11 +19,12 @@ class AntiCachingConfig {
 
   static constexpr const char* PMEM_MEMORY_RESOURCE_TYPE = "pmem";
   static constexpr const char* MMAP_MEMORY_RESOURCE_TYPE = "mmap";
+  static constexpr const char* UMAP_MEMORY_RESOURCE_TYPE = "umap";
 
   uint64_t segment_eviction_interval_in_ms = 10'000ul;
   uint64_t pool_size = 4ul * 1024 * 1024;
   uint64_t memory_budget = std::numeric_limits<uint64_t>::max();
-  std::string memory_resource_type = PMEM_MEMORY_RESOURCE_TYPE;
+  std::string memory_resource_type = UMAP_MEMORY_RESOURCE_TYPE;
 
  private:
   AntiCachingConfig() = default;

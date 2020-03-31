@@ -33,13 +33,23 @@ const SegmentAccessCounter::CounterType& SegmentAccessCounter::operator[](const 
   return _counters[static_cast<size_t>(type)];
 }
 
-std::string SegmentAccessCounter::to_string() const {
-  std::string result = std::to_string(_counters[0]);
-  result.reserve(static_cast<size_t>(AccessType::Count) * 19);
-  for (auto access_type = 1u; access_type < static_cast<size_t>(AccessType::Count); ++access_type) {
-    result.append(",");
-    result.append(std::to_string(_counters[access_type]));
+SegmentAccessCounter SegmentAccessCounter::operator-(const SegmentAccessCounter& other) const {
+  SegmentAccessCounter difference;
+  for (auto counter_index = 0ul, size = _counters.size(); counter_index < size; ++counter_index) {
+    difference._counters[counter_index] = _counters[counter_index].load() - other._counters[counter_index].load();
   }
+  return difference;
+}
+
+std::string SegmentAccessCounter::to_string() const {
+  std::string result;
+  result.reserve(static_cast<size_t>(AccessType::Count) * 19);
+  for (const auto access_type : AccessTypes) {
+    result.append(std::to_string(this->operator[](access_type)));
+    result.append(",");
+  }
+  // remove last ,
+  result.pop_back();
   return result;
 }
 
