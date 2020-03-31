@@ -433,10 +433,11 @@ void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta
         meta_file << entry_id << ',' << segment_info.segment_id.table_name << ',' << segment_info.segment_id.column_name
                   << ',' << segment_info.segment_id.chunk_id << ',' << segment_info.size << ','
                   << segment_info.memory_usage << '\n';
+        segment_id_entry_id_map[segment_info.segment_id] = entry_id;
       }
       output_file << entry_id << ','
-                  << std::chrono::duration_cast<std::chrono::seconds>(elapsed_time).count()
-                  << segment_info.in_memory
+                  << std::chrono::duration_cast<std::chrono::seconds>(elapsed_time).count() << ','
+                  << segment_info.in_memory << ','
                   << segment_info.access_counter.to_string() << '\n';
     }
   }
