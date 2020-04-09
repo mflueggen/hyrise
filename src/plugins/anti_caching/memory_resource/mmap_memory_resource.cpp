@@ -69,7 +69,7 @@ void* MmapMemoryResource::do_allocate(size_t bytes, size_t alignment) {
 }
 
 void MmapMemoryResource::do_deallocate(void* p, std::size_t bytes, std::size_t alignment) noexcept {
-//  std::cout << "MmapMemoryResource::do_deallocate was called but is not implemented\n";
+  std::cout << "MmapMemoryResource::do_deallocate was called but is not implemented\n";
 }
 
 bool MmapMemoryResource::do_is_equal(const boost::container::pmr::memory_resource& other) const noexcept {

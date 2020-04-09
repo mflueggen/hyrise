@@ -5,11 +5,15 @@
 
 #include <filesystem>
 #include <memory>
+#include <random>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "../plugins/anti_caching/segment_manager/abstract_segment_manager.hpp"
 #include "../plugins/anti_caching/segment_manager/pmr_segment_manager.hpp"
 #include "../plugins/anti_caching/segment_manager/umap_segment_manager.hpp"
+#include "../plugins/anti_caching/memory_resource/mmap_memory_resource.hpp"
 #include "../plugins/anti_caching/segment_id.hpp"
 #include "../plugins/anti_caching/segment_tools.hpp"
 #include "gtest/gtest.h"
@@ -35,8 +39,10 @@ class SegmentManagerTest : public BaseTest {
   static const size_t DEFAULT_ROW_COUNT = 256ul * 1024 + 1;
 
  protected:
-  std::unique_ptr<UmapSegmentManager> _create_segment_manager() {
+  std::unique_ptr<AbstractSegmentManager> _create_segment_manager() {
     return std::make_unique<UmapSegmentManager>(FILENAME, FILE_SIZE);
+//    _mmap = std::make_unique<MmapMemoryResource>(FILENAME, FILE_SIZE);
+//    return std::make_unique<PmrSegmentManager>(*_mmap);
   }
 
   template<typename DataType>
@@ -51,6 +57,7 @@ class SegmentManagerTest : public BaseTest {
     return true;
   }
 
+  std::unique_ptr<MmapMemoryResource> _mmap;
 };
 
 TEST_F(SegmentManagerTest, CreateAndDestroy) {
@@ -118,6 +125,86 @@ TEST_F(SegmentManagerTest, Load) {
 
   segment_manager->store(segment_id2, *SegmentTools::create_int_value_segment(DEFAULT_ROW_COUNT));
   ASSERT_TRUE(segment_manager->load(segment_id2));
+}
+
+TEST_F(SegmentManagerTest, BrutalSegmentSwapping) {
+  auto segment_manager = _create_segment_manager();
+  const auto& table = load_table("resources/test_data/tbl/int_equal_distribution.tbl", 3);
+  // randomly select segment to select or evict
+  const auto iterations = 1'000'000ul;
+  const auto chunk_count = table->chunk_count();
+  const auto column_count = table->column_count();
+  auto sum = 0ul;
+  auto segments_written_to_disk = 0;
+  std::cout << "chunk_count: " << chunk_count << "\n";
+
+
+
+//  for (auto c = 0u; c < chunk_count; ++c) {
+//    auto chunk = table->get_chunk(ChunkID{c});
+//    auto segment = chunk->get_segment(ColumnID{0});
+//    const auto segment_id = SegmentID("test_table", ChunkID{c}, ColumnID{0}, "test_column");
+//    auto copied_segment = segment_manager->store(segment_id, *segment);
+//    const auto value_segment = std::dynamic_pointer_cast<ValueSegment<int>>(copied_segment);
+//    const auto iterable = create_iterable_from_segment<int>(*value_segment);
+//    iterable.for_each([](const auto value) {std::cout << value.value() << "\n";});
+//    std::cout.flush();
+//  }
+//  std::cout << "all done." << "\n";
+
+
+  std::uniform_int_distribution<uint32_t> uniform_dist(0u, std::numeric_limits<uint32_t>::max());
+  std::default_random_engine random_engine;
+
+  for (auto i =0ul; i < iterations; ++i) {
+//    if (i % 1 == 0) {
+//      std::cout << "i=" << i << "\n";
+//      std::cout.flush();
+//    }
+
+    if (i == 41) {
+      ++sum;
+    }
+    const auto chunk_id = static_cast<ChunkID>(uniform_dist(random_engine) % chunk_count);
+    const auto column_id = static_cast<ColumnID>(uniform_dist(random_engine) % column_count);
+
+    const auto chunk = table->get_chunk(chunk_id);
+    auto segment = chunk->get_segment(column_id);
+    const auto segment_id = SegmentID("test_table", chunk_id, column_id, "test_column");
+
+    std::shared_ptr<BaseSegment> new_segment{nullptr};
+
+    if (uniform_dist(random_engine) & 1u) {
+      // evict
+      new_segment = segment_manager->load(segment_id);
+      if (!new_segment) {
+        new_segment = segment_manager->store(segment_id, *segment);
+        std::cout << ++segments_written_to_disk << " segments written to disk.\n";
+        std::cout.flush();
+      }
+    }
+    else {
+      // move to main memory
+//      if (i == 42) {
+//        const auto value_segment = std::dynamic_pointer_cast<ValueSegment<int>>(segment);
+//        const auto iterable = create_iterable_from_segment<int>(*value_segment);
+//        iterable.for_each([](const auto value) {std::cout << value.value() << "\n";});
+//        std::cout.flush();
+//      }
+      new_segment = segment->copy_using_allocator({});
+      segment_manager->remove(segment_id);
+    }
+
+    chunk->replace_segment(column_id, new_segment);
+    segment = chunk->get_segment(column_id);
+
+    const auto value_segment = std::dynamic_pointer_cast<ValueSegment<int>>(segment);
+    const auto iterable = create_iterable_from_segment<int>(*value_segment);
+    iterable.for_each([&sum](const auto value) {sum += value.value();});
+  }
+
+  std::cout << sum << "\n";
+
 }
 
 

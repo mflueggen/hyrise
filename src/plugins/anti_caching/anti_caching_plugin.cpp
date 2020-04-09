@@ -41,7 +41,7 @@ AntiCachingPlugin::~AntiCachingPlugin() {
   const auto timestamp = std::time(nullptr);
   const auto local_time = std::localtime(&timestamp);
   std::stringstream ss;
-  ss << std::put_time(local_time, "%Y%m%d%H%M%S");
+  ss << std::put_time(local_time, "%Y%m%d_%H%M%S");
   const auto timestamp_as_string = ss.str();
 
   export_access_statistics("meta_" + timestamp_as_string, "access_statistics_" + timestamp_as_string);
@@ -54,6 +54,7 @@ const std::string AntiCachingPlugin::description() const {
 
 void AntiCachingPlugin::start() {
   _log_line("Starting Plugin");
+  reset_access_statistics();
   _evaluate_statistics_thread =
     std::make_unique<PausableLoopThread>(std::chrono::milliseconds(_config.segment_eviction_interval_in_ms),
                                          [&](size_t) { _evaluate_statistics(); });
@@ -289,7 +290,8 @@ float AntiCachingPlugin::_compute_value(const SegmentInfo& segment_info) {
 
   using AccessType = SegmentAccessCounter::AccessType;
 
-  return -2140896.0f /* eviction cost */ + counter[AccessType::Dictionary] * dictionary_access_factor +
+  return -8.234215385 * segment_info.memory_usage
+            /*-2140896.0f*/ /* eviction cost */ + counter[AccessType::Dictionary] * dictionary_access_factor +
          counter[AccessType::Monotonic] * monotonic_access_factor + counter[AccessType::Point] * point_access_factor +
          counter[AccessType::Random] * random_access_factor +
          counter[AccessType::Sequential] * sequential_access_factor;
@@ -362,6 +364,7 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
         auto persisted_segment_it = _persisted_segments.find(segment_id);
         if (persisted_segment_it != _persisted_segments.cend()) {
           copy_of_segment = (*persisted_segment_it).second;
+          copy_of_segment->access_counter = segment_ptr->access_counter;
         } else {
           copy_of_segment = _segment_manager->store(segment_id, *segment_ptr);
           _persisted_segments.insert(persisted_segment_it, {segment_id, copy_of_segment});
@@ -401,6 +404,13 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
              bytes_evicted % bytes_restored % allocated_at_start % allocated_at_end %
              (allocated_at_end < allocated_at_start ? "-" : "+") %
              (std::max(allocated_at_start, allocated_at_end) - std::min(allocated_at_start, allocated_at_end))).str());
+}
+
+void AntiCachingPlugin::reset_access_statistics() {
+  _for_all_segments(Hyrise::get().storage_manager.tables(), true,
+                    [](SegmentID segment_id, std::shared_ptr<BaseSegment> segment_ptr) {
+                      segment_ptr->access_counter = {};
+                    });
 }
 
 void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta_data,

@@ -35,7 +35,7 @@ std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
          "msync failed with errno: " + std::to_string(errno));
 
   // remap using umap
-  Assert(umap(_mmap_memory_resource.mmap_pointer(), mmap_position_after_allocation, PROT_READ,
+  Assert(umap(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation, mmap_position_after_allocation - mmap_position_before_allocation, PROT_READ,
        UMAP_PRIVATE | UMAP_FIXED, _mmap_memory_resource.file_descriptor(), 0) != UMAP_FAILED,
          "Umap failed with errno: " + std::to_string(errno));
 
