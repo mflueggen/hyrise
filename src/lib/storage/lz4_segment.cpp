@@ -429,18 +429,21 @@ std::shared_ptr<BaseSegment> LZ4Segment<T>::copy_using_allocator(const Polymorph
       _null_values ? std::optional<pmr_vector<bool>>{pmr_vector<bool>{*_null_values, alloc}} : std::nullopt;
   auto new_dictionary = pmr_vector<char>{_dictionary, alloc};
 
-  std::shared_ptr<LZ4Segment> copy{nullptr};
+  auto copy = std::shared_ptr<LZ4Segment<T>>{};
+
   if (_string_offsets) {
     auto new_string_offsets = *_string_offsets ? (*_string_offsets)->copy_using_allocator(alloc) : nullptr;
-    copy = std::make_shared<LZ4Segment>(std::move(new_lz4_blocks), std::move(new_null_values),
-                                        std::move(new_dictionary), std::move(new_string_offsets), _block_size,
-                                        _last_block_size, _compressed_size, _num_elements);
+    copy = std::make_shared<LZ4Segment<T>>(std::move(new_lz4_blocks), std::move(new_null_values),
+                                           std::move(new_dictionary), std::move(new_string_offsets), _block_size,
+                                           _last_block_size, _compressed_size, _num_elements);
   } else {
-    copy = std::make_shared<LZ4Segment>(std::move(new_lz4_blocks), std::move(new_null_values),
-                                        std::move(new_dictionary), _block_size, _last_block_size, _compressed_size,
-                                        _num_elements);
+    copy = std::make_shared<LZ4Segment<T>>(std::move(new_lz4_blocks), std::move(new_null_values),
+                                           std::move(new_dictionary), _block_size, _last_block_size, _compressed_size,
+                                           _num_elements);
   }
+
   copy->access_counter = access_counter;
+
   return copy;
 }
 
