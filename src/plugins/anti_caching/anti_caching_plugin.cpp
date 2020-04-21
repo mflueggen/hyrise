@@ -99,7 +99,7 @@ void AntiCachingPlugin::_for_all_segments(const std::map<std::string, std::share
 
   for (const auto&[table_name, table_ptr] : tables) {
     for (auto chunk_id = ChunkID{0}, chunk_count = table_ptr->chunk_count(); chunk_id < chunk_count; ++chunk_id) {
-      const auto& chunk_ptr = table_ptr->get_chunk(chunk_id);
+      const auto chunk_ptr = table_ptr->get_chunk(chunk_id);
       if (!include_mutable_chunks && chunk_ptr->is_mutable()) continue;
       for (auto column_id = ColumnID{0}, column_count = static_cast<ColumnID>(chunk_ptr->column_count());
            column_id < column_count; ++column_id) {
@@ -367,6 +367,11 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
           copy_of_segment->access_counter = segment_ptr->access_counter;
         } else {
           copy_of_segment = _segment_manager->store(segment_id, *segment_ptr);
+
+          if (copy_of_segment->memory_usage(MemoryUsageCalculationMode::Full) > 1'000'000'000ul) {
+            Fail("Copying failed.");
+          }
+
           _persisted_segments.insert(persisted_segment_it, {segment_id, copy_of_segment});
           _log_line((boost::format("%s.%s (chunk_id: %d) persisted.") %
                      segment_id.table_name % segment_id.column_name %
@@ -453,6 +458,37 @@ void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta
   }
 
   meta_file.close();
+  output_file.close();
+}
+
+void AntiCachingPlugin::export_access_statistics(const std::map<std::string, std::shared_ptr<Table>>& tables,
+  const std::string& filename) {
+  std::ofstream output_file{filename};
+
+  output_file << "table_name,column_name,chunk_id,row_count,MemoryUsage,mutable";
+  for (const auto access_type : SegmentAccessCounter::AccessTypes) {
+    output_file << ',' << SegmentAccessCounter::access_type_string_mapping.at(access_type);
+  }
+  output_file << '\n';
+
+  for (const auto&[table_name, table_ptr] : Hyrise::get().storage_manager.tables()) {
+    for (auto chunk_id = ChunkID{0}, chunk_count = table_ptr->chunk_count(); chunk_id < chunk_count; ++chunk_id) {
+      const auto chunk_ptr = table_ptr->get_chunk(chunk_id);
+      for (auto column_id = ColumnID{0}, column_count = static_cast<ColumnID>(chunk_ptr->column_count());
+           column_id < column_count; ++column_id) {
+        const auto& column_name = table_ptr->column_name(column_id);
+        const SegmentID segment_id{table_name, chunk_id, column_id, column_name};
+        const auto segment_ptr = chunk_ptr->get_segment(column_id);
+        output_file << segment_id.table_name << ','
+                    << segment_id.column_name << ','
+                    << segment_id.chunk_id << ','
+                    << segment_ptr->size() << ','
+                    << segment_ptr->memory_usage(MemoryUsageCalculationMode::Full) << ','
+                    << chunk_ptr->is_mutable() << ','
+                    << segment_ptr->access_counter.to_string() << '\n';
+      }
+    }
+  }
   output_file.close();
 }
 

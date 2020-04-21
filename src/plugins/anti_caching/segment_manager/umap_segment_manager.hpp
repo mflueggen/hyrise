@@ -18,6 +18,7 @@ class UmapSegmentManager: public AbstractSegmentManager {
   UmapSegmentManager& operator=(UmapSegmentManager&&) = delete; // WHY?
 
   std::shared_ptr<BaseSegment> store(SegmentID segment_id, const BaseSegment& segment) override;
+  void* store(void* data, size_t length);
 
   bool delete_file_on_destruction = true;
 

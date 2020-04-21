@@ -3,10 +3,10 @@
 #include <memory>
 
 #include "all_type_variant.hpp"
-#include "types.hpp"
 #include "storage/base_encoded_segment.hpp"
 #include "storage/base_segment.hpp"
 #include "storage/encoding_type.hpp"
+#include "storage/pos_lists/rowid_pos_list.hpp"
 #include "storage/value_segment.hpp"
 
 
@@ -25,14 +25,16 @@ class SegmentTools {
   static std::shared_ptr<ValueSegment<int32_t>> create_int_with_null_value_segment(size_t row_count);
 
 
-  static std::shared_ptr<PosList> create_sequential_position_filter(size_t row_count);
+  static std::shared_ptr<RowIDPosList> create_sequential_position_filter(size_t row_count);
 
 
-  static std::shared_ptr<PosList> create_random_access_position_filter(size_t row_count);
+  static std::shared_ptr<RowIDPosList> create_random_access_position_filter(size_t row_count);
 
   static std::shared_ptr<BaseEncodedSegment> encode_segment(const std::shared_ptr<BaseSegment>& base_segment,
                                                             const DataType data_type,
                                                             const SegmentEncodingSpec& segment_encoding_spec);
+
+  static void export_access_statistics();
 };
 
 } // namespace opossum

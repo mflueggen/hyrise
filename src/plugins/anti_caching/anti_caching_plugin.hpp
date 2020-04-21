@@ -40,6 +40,7 @@ class AntiCachingPlugin : public AbstractPlugin {
   using TimestampSegmentInfosPair = std::pair<const std::chrono::time_point<std::chrono::steady_clock>, std::vector<SegmentInfo>>;
 
   void export_access_statistics(const std::string& path_to_meta_data, const std::string& path_to_access_statistics) const;
+  static void export_access_statistics(const std::map<std::string, std::shared_ptr<Table>>& tables, const std::string& filename);
 
   void reset_access_statistics();
 

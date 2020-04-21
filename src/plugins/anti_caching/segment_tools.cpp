@@ -47,8 +47,8 @@ std::shared_ptr<ValueSegment<int32_t>> SegmentTools::create_int_with_null_value_
   return std::make_shared<ValueSegment<int32_t>>(std::move(values), std::move(null_values));
 }
 
-std::shared_ptr<PosList> SegmentTools::create_sequential_position_filter(size_t row_count) {
-  auto list = std::make_shared<PosList>();
+std::shared_ptr<RowIDPosList> SegmentTools::create_sequential_position_filter(size_t row_count) {
+  auto list = std::make_shared<RowIDPosList>();
   list->guarantee_single_chunk();
 
   std::default_random_engine engine{};
@@ -63,7 +63,7 @@ std::shared_ptr<PosList> SegmentTools::create_sequential_position_filter(size_t 
   return list;
 }
 
-std::shared_ptr<PosList> SegmentTools::create_random_access_position_filter(size_t row_count) {
+std::shared_ptr<RowIDPosList> SegmentTools::create_random_access_position_filter(size_t row_count) {
   auto list = create_sequential_position_filter(row_count);
 
   auto random_device = std::random_device{};

@@ -34,10 +34,57 @@ std::shared_ptr<BaseSegment> UmapSegmentManager::store(SegmentID segment_id,
                 mmap_position_after_allocation - mmap_position_before_allocation, MS_SYNC),
          "msync failed with errno: " + std::to_string(errno));
 
+//  Assert(mmap(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation, mmap_position_after_allocation - mmap_position_before_allocation + 4096, PROT_READ,
+//              MAP_PRIVATE | MAP_FIXED | (MAP_ANONYMOUS | MAP_NORESERVE), _mmap_memory_resource.file_descriptor(), 0) != MAP_FAILED,
+//         "MMAP failed with errno: " + std::to_string(errno));
+
   // remap using umap
-  Assert(umap(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation, mmap_position_after_allocation - mmap_position_before_allocation, PROT_READ,
-       UMAP_PRIVATE | UMAP_FIXED, _mmap_memory_resource.file_descriptor(), 0) != UMAP_FAILED,
+  void* result;
+  Assert((result = umap(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation, mmap_position_after_allocation - mmap_position_before_allocation, PROT_READ,
+       UMAP_PRIVATE | UMAP_FIXED, _mmap_memory_resource.file_descriptor(), mmap_position_before_allocation)) != UMAP_FAILED,
          "Umap failed with errno: " + std::to_string(errno));
+
+  Assert(result == _mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation, "Fuck you bitches.");
+
+  // set upper_file_pos accordingly round up to (page_size + umap page size)
+  auto new_upper_file_pos = mmap_position_after_allocation + umap_page_size;
+  // umap will actually reserve (mmap_position_after_allocation + umap_page_size), rounded up to umap_page_size, bytes.
+  new_upper_file_pos += (umap_page_size - 1);
+  new_upper_file_pos &= ~(umap_page_size - 1);
+
+  _mmap_memory_resource.upper_file_pos = new_upper_file_pos;
+
+  return copy;
+}
+
+void* UmapSegmentManager::store(void* data, size_t length) {
+  const auto umap_page_size = umapcfg_get_umap_page_size();
+  const auto mmap_position_before_allocation = _mmap_memory_resource.upper_file_pos;
+
+  auto* copy = _mmap_memory_resource.allocate(length, 1);
+  std::memcpy(copy, data, length);
+
+  auto mmap_position_after_allocation = _mmap_memory_resource.upper_file_pos;
+  // mmap_position_after_allocation has to be divisible bei umap_page_size
+  // We round up using some serious bit magic. This works because umap_page_size is a power of 2.
+  mmap_position_after_allocation += (umap_page_size - 1);
+  mmap_position_after_allocation &= ~(umap_page_size - 1);
+
+  Assert(!msync(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation,
+                mmap_position_after_allocation - mmap_position_before_allocation, MS_SYNC),
+         "msync failed with errno: " + std::to_string(errno));
+
+//  Assert(mmap(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation, mmap_position_after_allocation - mmap_position_before_allocation + 4096, PROT_READ,
+//              MAP_PRIVATE | MAP_FIXED, _mmap_memory_resource.file_descriptor(), mmap_position_before_allocation) != MAP_FAILED,
+//         "MMAP failed with errno: " + std::to_string(errno));
+
+  // remap using umap
+  void* result;
+  Assert((result = umap(_mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation, mmap_position_after_allocation - mmap_position_before_allocation, PROT_READ,
+                        UMAP_PRIVATE | UMAP_FIXED, _mmap_memory_resource.file_descriptor(), mmap_position_before_allocation)) != UMAP_FAILED,
+         "Umap failed with errno: " + std::to_string(errno));
+
+  Assert(result == _mmap_memory_resource.mmap_pointer() + mmap_position_before_allocation, "Fuck you bitches.");
 
   // set upper_file_pos accordingly round up to (page_size + umap page size)
   auto new_upper_file_pos = mmap_position_after_allocation + umap_page_size;

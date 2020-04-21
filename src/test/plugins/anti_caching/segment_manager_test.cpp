@@ -20,6 +20,7 @@
 #include "resolve_type.hpp"
 #include "storage/create_iterable_from_segment.hpp"
 #include "storage/value_segment.hpp"
+#include "storage/vector_compression/vector_compression.hpp"
 #include "types.hpp"
 
 namespace opossum::anticaching {
@@ -34,7 +35,7 @@ class SegmentManagerTest : public BaseTest {
   }
 
   inline static const std::string FILENAME = "umap_test_pool";
-  inline static const size_t FILE_SIZE = 10ul * 1024 * 1024;
+  inline static const size_t FILE_SIZE = 20ul * 1024 * 1024;
   // So segments will be around 1MB. +1 To make sure we are not a multiple of the page size (4096)
   static const size_t DEFAULT_ROW_COUNT = 256ul * 1024 + 1;
 
@@ -52,7 +53,9 @@ class SegmentManagerTest : public BaseTest {
     }
 
     for (size_t i = 0ul, end = segment1.size(); i < end; ++i) {
-      if (segment1[i] != segment2[i]) return false;
+      if (segment1[i] != segment2[i]) {
+        return false;
+      }
     }
     return true;
   }
@@ -205,6 +208,55 @@ TEST_F(SegmentManagerTest, BrutalSegmentSwapping) {
 
   std::cout << sum << "\n";
 
+}
+
+TEST_F(SegmentManagerTest, SwapStringDictionarySegment) {
+  auto vs_str = std::make_shared<ValueSegment<pmr_string>>();
+  const auto string_count = 65535;
+  const auto max_string_length = 128;
+  std::uniform_int_distribution<uint32_t> uniform_dist(0u, std::numeric_limits<uint32_t>::max());
+  std::default_random_engine random_engine;
+
+  for (auto i = 0u; i < string_count; ++i) {
+    pmr_string str;
+    for (auto c = 0u, end = uniform_dist(random_engine) % max_string_length; c < end; ++c) {
+      str.append(1, static_cast<char>('a' + uniform_dist(random_engine) % 36));
+    }
+    vs_str->append(str);
+  }
+
+  auto segment =
+    ChunkEncoder::encode_segment(vs_str, DataType::String, SegmentEncodingSpec{EncodingType::Dictionary, VectorCompressionType::FixedSizeByteAligned});
+
+  auto segment_manager = std::make_unique<UmapSegmentManager>(FILENAME, FILE_SIZE);
+
+  const char* m = "mathias\0";
+  const char* a = "annika\0";
+  const char* f = "florian\0";
+
+  auto p1 = segment_manager->store((void*)m, 8);
+  auto p2 = segment_manager->store((void*)a, 7);
+  auto p3 = segment_manager->store((void*)f, 8);
+
+  std::cout << (char*)p1 << (char*)p2 << (char*)p3;
+  std::cout.flush();
+
+
+  auto swapped_segment = segment_manager->store(SegmentID{"table_name", ChunkID{0}, ColumnID{0}, "column_name"}, *segment);
+  auto swapped_segment2 = segment_manager->store(SegmentID{"table_name", ChunkID{1}, ColumnID{0}, "column_name"}, *segment);
+
+  auto dict_segment = std::dynamic_pointer_cast<DictionarySegment<pmr_string>>(segment_manager->load(SegmentID{"table_name", ChunkID{0}, ColumnID{0}, "column_name"}));
+  auto dict_segment2 = std::dynamic_pointer_cast<DictionarySegment<pmr_string>>(segment_manager->load(SegmentID{"table_name", ChunkID{1}, ColumnID{0}, "column_name"}));
+
+//  EXPECT_TRUE(equals<pmr_string>(*dict_segment, *dict_segment2));
+
+
+  // Test attribute_vector size
+  EXPECT_EQ(segment->memory_usage(MemoryUsageCalculationMode::Full), swapped_segment->memory_usage(MemoryUsageCalculationMode::Full));
+  EXPECT_EQ(segment->memory_usage(MemoryUsageCalculationMode::Full), swapped_segment2->memory_usage(MemoryUsageCalculationMode::Full));
+  std::cout << "tests passed?" << "\n";
+  std::cout.flush();
+  std::cout.flush();
 }
 
 
