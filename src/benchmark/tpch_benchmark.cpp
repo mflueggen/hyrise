@@ -1,15 +1,20 @@
+#include <sys/mman.h>
+
 #include <chrono>
 #include <iostream>
 #include <string>
+#include <thread>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
+
 
 #include "SQLParserResult.h"
 #include "benchmark_runner.hpp"
 #include "cli_config_parser.hpp"
 #include "cxxopts.hpp"
 #include "hyrise.hpp"
+#include "../plugins/anti_caching/anti_caching_plugin.hpp"
 #include "storage/segment_access_counter.hpp"
 #include "tpch/tpch_benchmark_item_runner.hpp"
 #include "tpch/tpch_queries.hpp"
@@ -35,6 +40,29 @@ using namespace opossum;  // NOLINT
  */
 
 int main(int argc, char* argv[]) {
+  size_t allocated_at_start;
+  size_t size_of_size_t = sizeof(size_t);
+  std::cout << "Right after start. Press ENTER to continue...\n";
+  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+  std::cout << "stats.allocated=" << allocated_at_start << '\n';
+  std::getchar();
+  // spin up thread to measure memory consumption
+
+  bool terminate_thread = false;
+  std::thread logging([&terminate_thread]{
+    std::ofstream output_file{"allocated_memory.txt"};
+    size_t allocated_at_start;
+    size_t size_of_size_t = sizeof(size_t);
+    while(!terminate_thread) {
+      mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+      mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+      output_file << allocated_at_start << "\n";
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+    output_file.close();
+  });
+
   auto cli_options = BenchmarkRunner::get_basic_cli_options("TPC-H Benchmark");
 
   // clang-format off
@@ -122,7 +150,48 @@ int main(int argc, char* argv[]) {
                           benchmark_runner->sqlite_wrapper);
   }
 
+//  const auto AVAILABLE_MEMORY = 4ul * 1024 * 1024 * 1024;
+//  const auto SCRATCH_SPACE = 197'345'280ul;
+//  const auto DATABASE_SPACE = 964'480'078ul;
+//  const auto LOCKED_MEMORY_SIZE = AVAILABLE_MEMORY - SCRATCH_SPACE - DATABASE_SPACE;
+
+
+  std::cout << "Before 4GB allocation. Press ENTER to continue...\n";
+  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+  std::cout << "stats.allocated=" << allocated_at_start << '\n';
+  std::getchar();
+
+  const auto LOCKED_MEMORY_SIZE = 4ul * 1024 * 1024 * 1024;
+  auto* locked_memory = malloc(LOCKED_MEMORY_SIZE);
+  if (!locked_memory) {
+    std::cout << "malloc failed.\n";
+    exit(-1);
+  }
+
+  if (mlock(locked_memory, LOCKED_MEMORY_SIZE)) {
+    std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+    exit(-1);
+  }
+
+  std::cout << "After 4GB allocation, before benchmasrk_runner->run(). Press ENTER to continue...\n";
+  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+  std::cout << "stats.allocated=" << allocated_at_start << '\n';
+  std::getchar();
+
   benchmark_runner->run();
+  anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(), "after_tpch_access_statistics.csv");
+  terminate_thread = true;
+  logging.join();
+
+  std::cout << "Before leaving main(). Press ENTER to continue...\n";
+  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+  std::cout << "stats.allocated=" << allocated_at_start << '\n';
+  std::getchar();
+
+  // export segment statistics
 //  SegmentAccessStatistics_T::save_to_csv(Hyrise::get().storage_manager.tables(), "access_statistics_tpch_10s_meta.csv",
 //    "access_statistics_tpch_10s.csv");
 }
