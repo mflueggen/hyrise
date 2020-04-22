@@ -54,6 +54,8 @@ add_plugin(NAME AntiCachingPlugin
     anti_caching/segment_info.hpp
     anti_caching/segment_tools.cpp
     anti_caching/segment_tools.hpp
+    anti_caching/memory_resource/lockable_memory_resource.cpp
+    anti_caching/memory_resource/lockable_memory_resource.hpp
     anti_caching/memory_resource/mmap_memory_resource.cpp
     anti_caching/memory_resource/mmap_memory_resource.hpp
     anti_caching/memory_resource/pmemobj_memory_resource.cpp

@@ -26,6 +26,22 @@
 
 using namespace opossum;  // NOLINT
 
+
+void break_point(const std::string& message) {
+  size_t allocated_at_start;
+  size_t size_of_size_t = sizeof(size_t);
+  std::cout << message << "\n";
+  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+  std::cout << "stats.allocated=" << allocated_at_start << '\n';
+  std::cout << "Press ENTER to continue...\n";
+  std::getchar();
+}
+
+void external_setup(const std::string& filename) {
+  
+}
+
 /**
  * This benchmark measures Hyrise's performance executing the TPC-H *queries*, it doesn't (yet) support running the
  * TPC-H *benchmark* exactly as it is specified.
@@ -40,36 +56,18 @@ using namespace opossum;  // NOLINT
  */
 
 int main(int argc, char* argv[]) {
-  size_t allocated_at_start;
-  size_t size_of_size_t = sizeof(size_t);
-  std::cout << "Right after start. Press ENTER to continue...\n";
-  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
-  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
-  std::cout << "stats.allocated=" << allocated_at_start << '\n';
-  std::getchar();
-  // spin up thread to measure memory consumption
-
-  bool terminate_thread = false;
-  std::thread logging([&terminate_thread]{
-    std::ofstream output_file{"allocated_memory.txt"};
-    size_t allocated_at_start;
-    size_t size_of_size_t = sizeof(size_t);
-    while(!terminate_thread) {
-      mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
-      mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
-      output_file << allocated_at_start << "\n";
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    }
-    output_file.close();
-  });
-
   auto cli_options = BenchmarkRunner::get_basic_cli_options("TPC-H Benchmark");
 
   // clang-format off
   cli_options.add_options()
     ("s,scale", "Database scale factor (1.0 ~ 1GB)", cxxopts::value<float>()->default_value("1"))
     ("q,queries", "Specify queries to run (comma-separated query ids, e.g. \"--queries 1,3,19\"), default is all", cxxopts::value<std::string>()) // NOLINT
-    ("use_prepared_statements", "Use prepared statements instead of random SQL strings", cxxopts::value<bool>()->default_value("false")); // NOLINT
+    ("use_prepared_statements", "Use prepared statements instead of random SQL strings", cxxopts::value<bool>()->default_value("false"))
+    ("enable_breakpoints", "Break at breakpoints", cxxopts::value<bool>()->default_value("false"))
+    ("path_to_memory_log", "Path to memory log", cxxopts::value<std::string>())
+    ("path_to_access_statistics_log", "Path to access statistics log", cxxopts::value<std::string>())
+    ("memory_to_lock", "Memory to lock", cxxopts::value<uint64_t>()->default_value("0"))
+    ("external_setup_file", "Path to external setup file", cxxopts::value<std::string>()); // NOLINT
   // clang-format on
 
   std::shared_ptr<BenchmarkConfig> config;
@@ -81,6 +79,31 @@ int main(int argc, char* argv[]) {
   const auto cli_parse_result = cli_options.parse(argc, argv);
 
   if (CLIConfigParser::print_help_if_requested(cli_options, cli_parse_result)) return 0;
+
+  const auto enable_breakpoints = cli_parse_result["enable_breakpoints"].as<bool>();
+  if (enable_breakpoints) break_point("After parsing command line args.");
+
+  const auto path_to_memory_log = cli_parse_result["path_to_memory_log"].as<std::string>();
+  const auto path_to_access_statistics_log = cli_parse_result["path_to_access_statistics_log"].as<std::string>();
+  const auto external_setup_file = cli_parse_result["external_setup_file"].as<std::string>();
+  const auto memory_to_lock = cli_parse_result["path_to_access_statistics_log"].as<uint64_t>();
+
+  // spin up thread to measure memory consumption
+  bool terminate_thread = false;
+  std::thread logging([&terminate_thread, &path_to_memory_log]{
+    if (path_to_memory_log.empty())
+      return;
+    std::ofstream output_file{path_to_memory_log};
+    size_t allocated_at_start;
+    size_t size_of_size_t = sizeof(size_t);
+    while(!terminate_thread) {
+      mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+      mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+      output_file << allocated_at_start << "\n";
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+    output_file.close();
+  });
 
   if (cli_parse_result.count("queries")) {
     comma_separated_queries = cli_parse_result["queries"].as<std::string>();
@@ -150,48 +173,38 @@ int main(int argc, char* argv[]) {
                           benchmark_runner->sqlite_wrapper);
   }
 
-//  const auto AVAILABLE_MEMORY = 4ul * 1024 * 1024 * 1024;
-//  const auto SCRATCH_SPACE = 197'345'280ul;
-//  const auto DATABASE_SPACE = 964'480'078ul;
-//  const auto LOCKED_MEMORY_SIZE = AVAILABLE_MEMORY - SCRATCH_SPACE - DATABASE_SPACE;
+  if (enable_breakpoints) break_point("Before reserving " + std::to_string(memory_to_lock) + " bytes");
 
+  if (memory_to_lock > 0) {
+    const auto LOCKED_MEMORY_SIZE = 4ul * 1024 * 1024 * 1024;
+    auto* locked_memory = malloc(LOCKED_MEMORY_SIZE);
+    if (!locked_memory) {
+      std::cout << "malloc failed.\n";
+      exit(-1);
+    }
 
-  std::cout << "Before 4GB allocation. Press ENTER to continue...\n";
-  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
-  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
-  std::cout << "stats.allocated=" << allocated_at_start << '\n';
-  std::getchar();
-
-  const auto LOCKED_MEMORY_SIZE = 4ul * 1024 * 1024 * 1024;
-  auto* locked_memory = malloc(LOCKED_MEMORY_SIZE);
-  if (!locked_memory) {
-    std::cout << "malloc failed.\n";
-    exit(-1);
+    if (mlock(locked_memory, LOCKED_MEMORY_SIZE)) {
+      std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+      exit(-1);
+    }
   }
 
-  if (mlock(locked_memory, LOCKED_MEMORY_SIZE)) {
-    std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
-    exit(-1);
+  if (enable_breakpoints) break_point("After reserving " + std::to_string(memory_to_lock) + " bytes");
+
+  if (!external_setup_file.empty()) {
+
   }
 
-  std::cout << "After 4GB allocation, before benchmasrk_runner->run(). Press ENTER to continue...\n";
-  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
-  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
-  std::cout << "stats.allocated=" << allocated_at_start << '\n';
-  std::getchar();
+  if (enable_breakpoints) break_point("After external preparation.");
 
   benchmark_runner->run();
-  anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(), "after_tpch_access_statistics.csv");
+
+  if (!path_to_access_statistics_log.empty()) {
+    anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
+                                                             path_to_access_statistics_log);
+  }
+
   terminate_thread = true;
   logging.join();
-
-  std::cout << "Before leaving main(). Press ENTER to continue...\n";
-  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
-  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
-  std::cout << "stats.allocated=" << allocated_at_start << '\n';
-  std::getchar();
-
-  // export segment statistics
-//  SegmentAccessStatistics_T::save_to_csv(Hyrise::get().storage_manager.tables(), "access_statistics_tpch_10s_meta.csv",
-//    "access_statistics_tpch_10s.csv");
+  if (enable_breakpoints) break_point("Before leaving main().");
 }
