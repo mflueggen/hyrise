@@ -8,13 +8,13 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
-
+#include "../plugins/anti_caching/anti_caching_plugin.hpp"
+#include "../third_party/nlohmann_json/single_include/nlohmann/json.hpp"
 #include "SQLParserResult.h"
 #include "benchmark_runner.hpp"
 #include "cli_config_parser.hpp"
 #include "cxxopts.hpp"
 #include "hyrise.hpp"
-#include "../plugins/anti_caching/anti_caching_plugin.hpp"
 #include "storage/segment_access_counter.hpp"
 #include "tpch/tpch_benchmark_item_runner.hpp"
 #include "tpch/tpch_queries.hpp"
@@ -39,7 +39,17 @@ void break_point(const std::string& message) {
 }
 
 void external_setup(const std::string& filename) {
-  
+  std::ifstream config_file(filename);
+  nlohmann::json json_config;
+  config_file >> json_config;
+  const auto type = json_config.value("type", "locked");
+
+  for (const auto& memory_segment: json_config["memory_segments"].items()) {
+    std::cout << memory_segment.key() << "\n";
+    std::cout << memory_segment.value() << "\n";
+
+    // hier segmente auslesen und abhängig vom typ entsprechend verarbeiten.
+  }
 }
 
 /**
@@ -64,10 +74,10 @@ int main(int argc, char* argv[]) {
     ("q,queries", "Specify queries to run (comma-separated query ids, e.g. \"--queries 1,3,19\"), default is all", cxxopts::value<std::string>()) // NOLINT
     ("use_prepared_statements", "Use prepared statements instead of random SQL strings", cxxopts::value<bool>()->default_value("false"))
     ("enable_breakpoints", "Break at breakpoints", cxxopts::value<bool>()->default_value("false"))
-    ("path_to_memory_log", "Path to memory log", cxxopts::value<std::string>())
-    ("path_to_access_statistics_log", "Path to access statistics log", cxxopts::value<std::string>())
+    ("path_to_memory_log", "Path to memory log", cxxopts::value<std::string>()->default_value(""))
+    ("path_to_access_statistics_log", "Path to access statistics log", cxxopts::value<std::string>()->default_value(""))
     ("memory_to_lock", "Memory to lock", cxxopts::value<uint64_t>()->default_value("0"))
-    ("external_setup_file", "Path to external setup file", cxxopts::value<std::string>()); // NOLINT
+    ("external_setup_file", "Path to external setup file", cxxopts::value<std::string>()->default_value("")); // NOLINT
   // clang-format on
 
   std::shared_ptr<BenchmarkConfig> config;
@@ -86,7 +96,11 @@ int main(int argc, char* argv[]) {
   const auto path_to_memory_log = cli_parse_result["path_to_memory_log"].as<std::string>();
   const auto path_to_access_statistics_log = cli_parse_result["path_to_access_statistics_log"].as<std::string>();
   const auto external_setup_file = cli_parse_result["external_setup_file"].as<std::string>();
-  const auto memory_to_lock = cli_parse_result["path_to_access_statistics_log"].as<uint64_t>();
+  const auto memory_to_lock = cli_parse_result["memory_to_lock"].as<uint64_t>();
+
+  if (!external_setup_file.empty()) {
+    external_setup(external_setup_file);
+  }
 
   // spin up thread to measure memory consumption
   bool terminate_thread = false;
@@ -192,7 +206,7 @@ int main(int argc, char* argv[]) {
   if (enable_breakpoints) break_point("After reserving " + std::to_string(memory_to_lock) + " bytes");
 
   if (!external_setup_file.empty()) {
-
+    external_setup(external_setup_file);
   }
 
   if (enable_breakpoints) break_point("After external preparation.");
