@@ -9,6 +9,7 @@
 #include <boost/lexical_cast.hpp>
 
 #include "../plugins/anti_caching/anti_caching_plugin.hpp"
+#include "../plugins/anti_caching/memory_resource/lockable_memory_resource.hpp"
 #include "../third_party/nlohmann_json/single_include/nlohmann/json.hpp"
 #include "SQLParserResult.h"
 #include "benchmark_runner.hpp"
@@ -43,12 +44,34 @@ void external_setup(const std::string& filename) {
   nlohmann::json json_config;
   config_file >> json_config;
   const auto type = json_config.value("type", "locked");
+  const size_t size = json_config.value("size", 0);
+
+  anticaching::LockableMemoryResource* lockable_memory_resource = nullptr;
+
+  if (type == "locked") {
+    lockable_memory_resource = new anticaching::LockableMemoryResource(size);
+  }
 
   for (const auto& memory_segment: json_config["memory_segments"].items()) {
-    std::cout << memory_segment.key() << "\n";
-    std::cout << memory_segment.value() << "\n";
-
+    const uint32_t chunk_id = memory_segment.value()["chunk_id"];
+    const std::string table_name = memory_segment.value()["table_name"];
+    const std::string column_name = memory_segment.value()["column_name"];
     // hier segmente auslesen und abhängig vom typ entsprechend verarbeiten.
+
+    // 1. segment holen
+    auto table = Hyrise::get().storage_manager.get_table(table_name);
+    auto chunk = table->get_chunk(ChunkID{chunk_id});
+    const auto column_id = table->column_id_by_name(column_name);
+    const auto segment = chunk->get_segment(column_id);
+
+    // 2. Direkt in die memory resource. Dafür muss ich aber die gesamntmenge an speicher kennnen.
+    // replace in chunk.
+    auto copy = segment->copy_using_allocator(lockable_memory_resource);
+    chunk->replace_segment(column_id, copy);
+  }
+
+  if (type == "locked") {
+    lockable_memory_resource->lock();
   }
 }
 
@@ -76,7 +99,7 @@ int main(int argc, char* argv[]) {
     ("enable_breakpoints", "Break at breakpoints", cxxopts::value<bool>()->default_value("false"))
     ("path_to_memory_log", "Path to memory log", cxxopts::value<std::string>()->default_value(""))
     ("path_to_access_statistics_log", "Path to access statistics log", cxxopts::value<std::string>()->default_value(""))
-    ("memory_to_lock", "Memory to lock", cxxopts::value<uint64_t>()->default_value("0"))
+    ("memory_to_lock", "Block of memory to reserve. Not used for anything.", cxxopts::value<uint64_t>()->default_value("0"))
     ("external_setup_file", "Path to external setup file", cxxopts::value<std::string>()->default_value("")); // NOLINT
   // clang-format on
 
@@ -97,10 +120,6 @@ int main(int argc, char* argv[]) {
   const auto path_to_access_statistics_log = cli_parse_result["path_to_access_statistics_log"].as<std::string>();
   const auto external_setup_file = cli_parse_result["external_setup_file"].as<std::string>();
   const auto memory_to_lock = cli_parse_result["memory_to_lock"].as<uint64_t>();
-
-  if (!external_setup_file.empty()) {
-    external_setup(external_setup_file);
-  }
 
   // spin up thread to measure memory consumption
   bool terminate_thread = false;
