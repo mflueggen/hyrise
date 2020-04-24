@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 
+#include "../plugins/anti_caching/anti_caching_plugin.hpp"
 #include "benchmark_runner.hpp"
 #include "cli_config_parser.hpp"
 #include "cxxopts.hpp"
@@ -11,6 +12,8 @@
 #include "tpcds/tpcds_table_generator.hpp"
 #include "utils/assert.hpp"
 #include "utils/sqlite_add_indices.hpp"
+
+#include "third_party/jemalloc/include/jemalloc/jemalloc.h"
 
 using namespace opossum;  // NOLINT
 
@@ -36,11 +39,18 @@ const std::unordered_set<std::string> filename_blacklist() {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+    bool terminate_thread = false;
+
   auto cli_options = opossum::BenchmarkRunner::get_basic_cli_options("TPC-DS Benchmark");
 
   // clang-format off
   cli_options.add_options()
-    ("s,scale", "Database scale factor (1 ~ 1GB)", cxxopts::value<int32_t>()->default_value("1"));
+    ("s,scale", "Database scale factor (1 ~ 1GB)", cxxopts::value<int32_t>()->default_value("1"))
+    ("enable_breakpoints", "Break at breakpoints", cxxopts::value<bool>()->default_value("false"))
+    ("path_to_memory_log", "Path to memory log", cxxopts::value<std::string>()->default_value(""))
+    ("path_to_access_statistics_log", "Path to access statistics log", cxxopts::value<std::string>()->default_value(""))
+    ("memory_to_lock", "Block of memory to reserve. Not used for anything.", cxxopts::value<uint64_t>()->default_value("0"))
+    ("external_setup_file", "Path to external setup file", cxxopts::value<std::string>()->default_value("")); // NOLINT
   // clang-format on
 
   auto config = std::shared_ptr<opossum::BenchmarkConfig>{};
@@ -52,6 +62,41 @@ int main(int argc, char* argv[]) {
   if (CLIConfigParser::print_help_if_requested(cli_options, cli_parse_result)) {
     return 0;
   }
+
+      std::thread another_thread([&terminate_thread] {
+      size_t allocated_at_start = 1;
+      size_t size_of_size_t = sizeof(size_t);
+      while (!terminate_thread) {
+        mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+        if (mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0)) {
+          std::cout << "failed" << "\n";
+        }
+        std::cout << allocated_at_start << "\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      }
+    });
+
+//  const auto enable_breakpoints = cli_parse_result["enable_breakpoints"].as<bool>();
+  const auto path_to_memory_log = cli_parse_result["path_to_memory_log"].as<std::string>();
+  const auto path_to_access_statistics_log = cli_parse_result["path_to_access_statistics_log"].as<std::string>();
+  const auto external_setup_file = cli_parse_result["external_setup_file"].as<std::string>();
+//  const auto memory_to_lock = cli_parse_result["memory_to_lock"].as<uint64_t>();
+
+  std::thread logging([&terminate_thread, &path_to_memory_log]{
+    if (path_to_memory_log.empty())
+      return;
+    std::ofstream output_file{path_to_memory_log};
+    size_t allocated_at_start;
+    size_t size_of_size_t = sizeof(size_t);
+    while(!terminate_thread) {
+      mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
+      mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
+      output_file << allocated_at_start << "\n";
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+    output_file.close();
+  });
+
   scale_factor = cli_parse_result["scale"].as<int32_t>();
 
   config = std::make_shared<opossum::BenchmarkConfig>(opossum::CLIConfigParser::parse_cli_options(cli_parse_result));
@@ -83,6 +128,15 @@ int main(int argc, char* argv[]) {
   }
   std::cout << "done." << std::endl;
 
-  SegmentAccessCounter::reset(Hyrise::get().storage_manager.tables());
+
   benchmark_runner.run();
+
+  if (!path_to_access_statistics_log.empty()) {
+    anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
+                                                             path_to_access_statistics_log);
+  }
+
+  terminate_thread = true;
+  another_thread.join();
+  logging.join();
 }

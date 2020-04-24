@@ -138,6 +138,20 @@ int main(int argc, char* argv[]) {
     output_file.close();
   });
 
+//  std::thread another_thread([&terminate_thread]{
+//    size_t size_of_size_t = sizeof(size_t);
+//    while(!terminate_thread) {
+//      size_t epoch = 1;
+//      size_t allocated_at_start = 0;
+//      mallctl("epoch", &epoch, &size_of_size_t, &epoch, size_of_size_t);
+//      if (mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0)) {
+//        std::cout << "failed" << "\n";
+//      }
+//      std::cout << allocated_at_start << "\n";
+//      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+//    }
+//  });
+
   if (cli_parse_result.count("queries")) {
     comma_separated_queries = cli_parse_result["queries"].as<std::string>();
   }
@@ -239,5 +253,6 @@ int main(int argc, char* argv[]) {
 
   terminate_thread = true;
   logging.join();
+//  another_thread.join();
   if (enable_breakpoints) break_point("Before leaving main().");
 }
