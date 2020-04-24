@@ -139,6 +139,7 @@ void BenchmarkRunner::run() {
 }
 
 void BenchmarkRunner::_benchmark_shuffled() {
+  Hyrise::get().plugin_manager.load_plugin("lib/libAntiCachingPlugin.so");
   auto item_ids = _benchmark_item_runner->items();
 
   if (const auto& weights = _benchmark_item_runner->weights(); !weights.empty()) {
