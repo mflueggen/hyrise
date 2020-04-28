@@ -265,6 +265,7 @@ int main(int argc, char* argv[]) {
     if (enable_breakpoints) {
       break_point("Before benchmark cleanup");
     }
+  }
 
   if (enable_breakpoints) {
     Hyrise::get().benchmark_runner.reset();
