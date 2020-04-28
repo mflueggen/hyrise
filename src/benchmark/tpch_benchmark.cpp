@@ -32,9 +32,13 @@ void break_point(const std::string& message) {
   size_t allocated_at_start;
   size_t size_of_size_t = sizeof(size_t);
   std::cout << message << "\n";
+
+  mallctl("arena.4096.purge", NULL, NULL, NULL, 0);
   mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
   mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
   std::cout << "stats.allocated=" << allocated_at_start << '\n';
+  mallctl("stats.resident", &allocated_at_start, &size_of_size_t, nullptr, 0);
+  std::cout << "stats.resident=" << allocated_at_start << '\n';
   std::cout << "Press ENTER to continue...\n";
   std::getchar();
 }
@@ -130,11 +134,15 @@ int main(int argc, char* argv[]) {
     size_t allocated_at_start;
     size_t size_of_size_t = sizeof(size_t);
     while(!terminate_thread) {
+      mallctl("arena.4096.purge", NULL, NULL, NULL, 0);
       mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
       mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
-      output_file << allocated_at_start << "\n";
+      output_file << allocated_at_start;
+      mallctl("stats.resident", &allocated_at_start, &size_of_size_t, nullptr, 0);
+      output_file << "," << allocated_at_start << "\n";
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
+
     output_file.close();
   });
 
@@ -152,107 +160,121 @@ int main(int argc, char* argv[]) {
 //    }
 //  });
 
-  if (cli_parse_result.count("queries")) {
-    comma_separated_queries = cli_parse_result["queries"].as<std::string>();
-  }
-
-  scale_factor = cli_parse_result["scale"].as<float>();
-
-  config = std::make_shared<BenchmarkConfig>(CLIConfigParser::parse_cli_options(cli_parse_result));
-
-  use_prepared_statements = cli_parse_result["use_prepared_statements"].as<bool>();
-
-  std::vector<BenchmarkItemID> item_ids;
-
-  // Build list of query ids to be benchmarked and display it
-  if (comma_separated_queries.empty()) {
-    std::transform(tpch_queries.begin(), tpch_queries.end(), std::back_inserter(item_ids),
-                   [](auto& pair) { return BenchmarkItemID{pair.first - 1}; });
-  } else {
-    // Split the input into query ids, ignoring leading, trailing, or duplicate commas
-    auto item_ids_str = std::vector<std::string>();
-    boost::trim_if(comma_separated_queries, boost::is_any_of(","));
-    boost::split(item_ids_str, comma_separated_queries, boost::is_any_of(","), boost::token_compress_on);
-    std::transform(item_ids_str.begin(), item_ids_str.end(), std::back_inserter(item_ids), [](const auto& item_id_str) {
-      const auto item_id =
-          BenchmarkItemID{boost::lexical_cast<BenchmarkItemID::base_type, std::string>(item_id_str) - 1};
-      DebugAssert(item_id < 22, "There are only 22 TPC-H queries");
-      return item_id;
-    });
-  }
-
-  std::cout << "- Benchmarking Queries: [ ";
-  auto printable_item_ids = std::vector<std::string>();
-  std::for_each(item_ids.begin(), item_ids.end(),
-                [&printable_item_ids](auto& id) { printable_item_ids.push_back(std::to_string(id + 1)); });
-  std::cout << boost::algorithm::join(printable_item_ids, ", ") << " ]" << std::endl;
-
-  auto context = BenchmarkRunner::create_context(*config);
-
-  Assert(!use_prepared_statements || !config->verify, "SQLite validation does not work with prepared statements");
-
-  if (config->verify) {
-    // Hack: We cannot verify TPC-H Q15, thus we remove it from the list of queries
-    auto it = std::remove(item_ids.begin(), item_ids.end(), 15 - 1);
-    if (it != item_ids.end()) {
-      // The problem is that the last part of the query, "DROP VIEW", does not return a table. Since we also have
-      // the TPC-H test against a known-to-be-good table, we do not want the additional complexity for handling this
-      // in the BenchmarkRunner.
-      std::cout << "- Skipping Query 15 because it cannot easily be verified" << std::endl;
-      item_ids.erase(it, item_ids.end());
+  {
+    if (cli_parse_result.count("queries")) {
+      comma_separated_queries = cli_parse_result["queries"].as<std::string>();
     }
-  }
 
-  std::cout << "- TPCH scale factor is " << scale_factor << std::endl;
-  std::cout << "- Using prepared statements: " << (use_prepared_statements ? "yes" : "no") << std::endl;
+    scale_factor = cli_parse_result["scale"].as<float>();
 
-  // Add TPCH-specific information
-  context.emplace("scale_factor", scale_factor);
-  context.emplace("use_prepared_statements", use_prepared_statements);
+    config = std::make_shared<BenchmarkConfig>(CLIConfigParser::parse_cli_options(cli_parse_result));
 
-  auto item_runner = std::make_unique<TPCHBenchmarkItemRunner>(config, use_prepared_statements, scale_factor, item_ids);
-  auto benchmark_runner = std::make_shared<BenchmarkRunner>(
+    use_prepared_statements = cli_parse_result["use_prepared_statements"].as<bool>();
+
+    std::vector<BenchmarkItemID> item_ids;
+
+    // Build list of query ids to be benchmarked and display it
+    if (comma_separated_queries.empty()) {
+      std::transform(tpch_queries.begin(), tpch_queries.end(), std::back_inserter(item_ids),
+                     [](auto& pair) { return BenchmarkItemID{pair.first - 1}; });
+    } else {
+      // Split the input into query ids, ignoring leading, trailing, or duplicate commas
+      auto item_ids_str = std::vector<std::string>();
+      boost::trim_if(comma_separated_queries, boost::is_any_of(","));
+      boost::split(item_ids_str, comma_separated_queries, boost::is_any_of(","), boost::token_compress_on);
+      std::transform(item_ids_str.begin(), item_ids_str.end(), std::back_inserter(item_ids),
+                     [](const auto& item_id_str) {
+                       const auto item_id =
+                         BenchmarkItemID{boost::lexical_cast<BenchmarkItemID::base_type, std::string>(item_id_str) - 1};
+                       DebugAssert(item_id < 22, "There are only 22 TPC-H queries");
+                       return item_id;
+                     });
+    }
+
+    std::cout << "- Benchmarking Queries: [ ";
+    auto printable_item_ids = std::vector<std::string>();
+    std::for_each(item_ids.begin(), item_ids.end(),
+                  [&printable_item_ids](auto& id) { printable_item_ids.push_back(std::to_string(id + 1)); });
+    std::cout << boost::algorithm::join(printable_item_ids, ", ") << " ]" << std::endl;
+
+    auto context = BenchmarkRunner::create_context(*config);
+
+    Assert(!use_prepared_statements || !config->verify, "SQLite validation does not work with prepared statements");
+
+    if (config->verify) {
+      // Hack: We cannot verify TPC-H Q15, thus we remove it from the list of queries
+      auto it = std::remove(item_ids.begin(), item_ids.end(), 15 - 1);
+      if (it != item_ids.end()) {
+        // The problem is that the last part of the query, "DROP VIEW", does not return a table. Since we also have
+        // the TPC-H test against a known-to-be-good table, we do not want the additional complexity for handling this
+        // in the BenchmarkRunner.
+        std::cout << "- Skipping Query 15 because it cannot easily be verified" << std::endl;
+        item_ids.erase(it, item_ids.end());
+      }
+    }
+
+    std::cout << "- TPCH scale factor is " << scale_factor << std::endl;
+    std::cout << "- Using prepared statements: " << (use_prepared_statements ? "yes" : "no") << std::endl;
+
+    // Add TPCH-specific information
+    context.emplace("scale_factor", scale_factor);
+    context.emplace("use_prepared_statements", use_prepared_statements);
+
+    auto item_runner = std::make_unique<TPCHBenchmarkItemRunner>(config, use_prepared_statements, scale_factor,
+                                                                 item_ids);
+    auto benchmark_runner = std::make_shared<BenchmarkRunner>(
       *config, std::move(item_runner), std::make_unique<TPCHTableGenerator>(scale_factor, config), context);
-  Hyrise::get().benchmark_runner = benchmark_runner;
+    Hyrise::get().benchmark_runner = benchmark_runner;
 
-  if (config->verify) {
-    add_indices_to_sqlite("resources/benchmark/tpch/schema.sql", "resources/benchmark/tpch/indices.sql",
-                          benchmark_runner->sqlite_wrapper);
-  }
-
-  if (enable_breakpoints) break_point("Before reserving " + std::to_string(memory_to_lock) + " bytes");
-
-  if (memory_to_lock > 0) {
-    const auto LOCKED_MEMORY_SIZE = 4ul * 1024 * 1024 * 1024;
-    auto* locked_memory = malloc(LOCKED_MEMORY_SIZE);
-    if (!locked_memory) {
-      std::cout << "malloc failed.\n";
-      exit(-1);
+    if (config->verify) {
+      add_indices_to_sqlite("resources/benchmark/tpch/schema.sql", "resources/benchmark/tpch/indices.sql",
+                            benchmark_runner->sqlite_wrapper);
     }
 
-    if (mlock(locked_memory, LOCKED_MEMORY_SIZE)) {
-      std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
-      exit(-1);
+    if (enable_breakpoints) break_point("Before reserving " + std::to_string(memory_to_lock) + " bytes");
+
+    if (memory_to_lock > 0) {
+      const auto LOCKED_MEMORY_SIZE = 4ul * 1024 * 1024 * 1024;
+      auto* locked_memory = malloc(LOCKED_MEMORY_SIZE);
+      if (!locked_memory) {
+        std::cout << "malloc failed.\n";
+        exit(-1);
+      }
+
+      if (mlock(locked_memory, LOCKED_MEMORY_SIZE)) {
+        std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+        exit(-1);
+      }
     }
-  }
 
-  if (enable_breakpoints) break_point("After reserving " + std::to_string(memory_to_lock) + " bytes");
+    if (enable_breakpoints) break_point("After reserving " + std::to_string(memory_to_lock) + " bytes");
 
-  if (!external_setup_file.empty()) {
-    external_setup(external_setup_file);
-  }
+    if (!external_setup_file.empty()) {
+      external_setup(external_setup_file);
+    }
 
-  if (enable_breakpoints) break_point("After external preparation.");
+    if (enable_breakpoints) break_point("After external preparation.");
 
-  benchmark_runner->run();
+    benchmark_runner->run();
 
-  if (!path_to_access_statistics_log.empty()) {
-    anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
-                                                             path_to_access_statistics_log);
+    if (!path_to_access_statistics_log.empty()) {
+      anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
+                                                               path_to_access_statistics_log);
+    }
+
+    if (enable_breakpoints) {
+      break_point("Before benchmark cleanup");
+    }
+
+  if (enable_breakpoints) {
+    Hyrise::get().benchmark_runner.reset();
+    break_point("after benchmark cleanup");
   }
 
   terminate_thread = true;
   logging.join();
 //  another_thread.join();
+
+
   if (enable_breakpoints) break_point("Before leaving main().");
 }
