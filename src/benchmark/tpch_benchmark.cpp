@@ -101,6 +101,7 @@ int main(int argc, char* argv[]) {
     ("q,queries", "Specify queries to run (comma-separated query ids, e.g. \"--queries 1,3,19\"), default is all", cxxopts::value<std::string>()) // NOLINT
     ("use_prepared_statements", "Use prepared statements instead of random SQL strings", cxxopts::value<bool>()->default_value("false"))
     ("enable_breakpoints", "Break at breakpoints", cxxopts::value<bool>()->default_value("false"))
+    ("mlockall", "Call mlockall before query start", cxxopts::value<bool>()->default_value("false"))
     ("path_to_memory_log", "Path to memory log", cxxopts::value<std::string>()->default_value(""))
     ("path_to_access_statistics_log", "Path to access statistics log", cxxopts::value<std::string>()->default_value(""))
     ("memory_to_lock", "Block of memory to reserve. Not used for anything.", cxxopts::value<uint64_t>()->default_value("0"))
@@ -117,6 +118,7 @@ int main(int argc, char* argv[]) {
 
   if (CLIConfigParser::print_help_if_requested(cli_options, cli_parse_result)) return 0;
 
+  const auto mlock_all = cli_parse_result["mlockall"].as<bool>();
   const auto enable_breakpoints = cli_parse_result["enable_breakpoints"].as<bool>();
   if (enable_breakpoints) break_point("After parsing command line args.");
 
@@ -231,9 +233,9 @@ int main(int argc, char* argv[]) {
                             benchmark_runner->sqlite_wrapper);
     }
 
-    if (enable_breakpoints) break_point("Before reserving " + std::to_string(memory_to_lock) + " bytes");
-
     if (memory_to_lock > 0) {
+      if (enable_breakpoints) break_point("Before reserving " + std::to_string(memory_to_lock) + " bytes");
+
       const auto LOCKED_MEMORY_SIZE = 4ul * 1024 * 1024 * 1024;
       auto* locked_memory = malloc(LOCKED_MEMORY_SIZE);
       if (!locked_memory) {
@@ -245,15 +247,25 @@ int main(int argc, char* argv[]) {
         std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
         exit(-1);
       }
+
+      if (enable_breakpoints) break_point("After reserving " + std::to_string(memory_to_lock) + " bytes");
     }
 
-    if (enable_breakpoints) break_point("After reserving " + std::to_string(memory_to_lock) + " bytes");
-
-    if (!external_setup_file.empty()) {
+    const auto external_configuration = !external_setup_file.empty();
+    if (external_configuration) {
+      if (enable_breakpoints) break_point("Before external preparation.");
       external_setup(external_setup_file);
+      if (enable_breakpoints) break_point("After external preparation.");
     }
 
-    if (enable_breakpoints) break_point("After external preparation.");
+    if (mlock_all) {
+      if (enable_breakpoints) break_point("Before mlockall");
+      if (mlockall(MCL_CURRENT)) {
+        std::cout << "mlockall failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+        exit(-1);
+      }
+      if (enable_breakpoints) break_point("After mlockall");
+    }
 
     benchmark_runner->run();
 
@@ -275,7 +287,6 @@ int main(int argc, char* argv[]) {
   terminate_thread = true;
   logging.join();
 //  another_thread.join();
-
 
   if (enable_breakpoints) break_point("Before leaving main().");
 }
