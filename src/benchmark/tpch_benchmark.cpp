@@ -236,14 +236,13 @@ int main(int argc, char* argv[]) {
     if (memory_to_lock > 0) {
       if (enable_breakpoints) break_point("Before reserving " + std::to_string(memory_to_lock) + " bytes");
 
-      const auto LOCKED_MEMORY_SIZE = 4ul * 1024 * 1024 * 1024;
-      auto* locked_memory = malloc(LOCKED_MEMORY_SIZE);
+      auto* locked_memory = malloc(memory_to_lock);
       if (!locked_memory) {
         std::cout << "malloc failed.\n";
         exit(-1);
       }
 
-      if (mlock(locked_memory, LOCKED_MEMORY_SIZE)) {
+      if (mlock(locked_memory, memory_to_lock)) {
         std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
         exit(-1);
       }
@@ -267,7 +266,9 @@ int main(int argc, char* argv[]) {
       if (enable_breakpoints) break_point("After mlockall");
     }
 
+    if (enable_breakpoints) break_point("benchmark_runner->run()");
     benchmark_runner->run();
+    if (enable_breakpoints) break_point("After benchmark_runner->run()");
 
     if (!path_to_access_statistics_log.empty()) {
       anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
