@@ -259,18 +259,18 @@ int main(int argc, char* argv[]) {
       if (enable_breakpoints) break_point("After mlockall");
     }
 
-    auto relocking_required = !unlock_segment_path.empty();
-    if (relocking_required) {
-      if (enable_breakpoints) break_point("Before unlocking segments");
-      apply_locking(unlock_segment_path, lockable_segment_manager, true);
-      if (enable_breakpoints) break_point("After unlocking segments");
-    }
-
-    relocking_required = !lock_segment_path.empty();
+    auto relocking_required = !lock_segment_path.empty();
     if (relocking_required) {
       if (enable_breakpoints) break_point("Before locking segments");
       apply_locking(lock_segment_path, lockable_segment_manager, false);
       if (enable_breakpoints) break_point("After locking segments");
+    }
+
+    relocking_required = !unlock_segment_path.empty();
+    if (relocking_required) {
+      if (enable_breakpoints) break_point("Before unlocking segments");
+      apply_locking(unlock_segment_path, lockable_segment_manager, true);
+      if (enable_breakpoints) break_point("After unlocking segments");
     }
 
     if (memory_to_lock > 0) {
