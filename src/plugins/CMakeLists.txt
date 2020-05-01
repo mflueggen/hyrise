@@ -62,6 +62,8 @@ add_plugin(NAME AntiCachingPlugin
     anti_caching/memory_resource/pmemobj_memory_resource.hpp
     anti_caching/segment_manager/abstract_segment_manager.cpp
     anti_caching/segment_manager/abstract_segment_manager.hpp
+    anti_caching/segment_manager/lockable_segment_manager.cpp
+    anti_caching/segment_manager/lockable_segment_manager.hpp
     anti_caching/segment_manager/pmr_segment_manager.cpp
     anti_caching/segment_manager/pmr_segment_manager.hpp
     anti_caching/segment_manager/umap_segment_manager.cpp

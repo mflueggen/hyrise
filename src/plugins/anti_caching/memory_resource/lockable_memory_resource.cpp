@@ -1,5 +1,6 @@
 #include "lockable_memory_resource.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include <sys/mman.h>
 
@@ -19,6 +20,7 @@ LockableMemoryResource::LockableMemoryResource(size_t capacity)
 
 LockableMemoryResource::~LockableMemoryResource() {
   unlock();
+//  std::free(_memory_address);
 }
 
 void LockableMemoryResource::lock() {

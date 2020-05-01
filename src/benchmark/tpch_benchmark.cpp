@@ -9,7 +9,7 @@
 #include <boost/lexical_cast.hpp>
 
 #include "../plugins/anti_caching/anti_caching_plugin.hpp"
-#include "../plugins/anti_caching/memory_resource/lockable_memory_resource.hpp"
+#include "../plugins/anti_caching/segment_manager/lockable_segment_manager.hpp"
 #include "../third_party/nlohmann_json/single_include/nlohmann/json.hpp"
 #include "SQLParserResult.h"
 #include "benchmark_runner.hpp"
@@ -24,6 +24,7 @@
 #include "utils/sqlite_add_indices.hpp"
 
 #include "third_party/jemalloc/include/jemalloc/jemalloc.h"
+#include "../plugins/anti_caching/segment_id.hpp"
 
 using namespace opossum;  // NOLINT
 
@@ -43,39 +44,40 @@ void break_point(const std::string& message) {
   std::getchar();
 }
 
-void external_setup(const std::string& filename) {
+void initialize_lockable_segment_manager(anticaching::LockableSegmentManager& lockable_segment_manager) {
+  for (const auto& [table_name, table] : Hyrise::get().storage_manager.tables()) {
+    const auto chunk_count = table->chunk_count();
+    const auto column_count = table->column_count();
+    for (auto chunk_id = ChunkID{0}; chunk_id < chunk_count; ++chunk_id) {
+      const auto chunk = table->get_chunk(chunk_id);
+      for (auto column_id = ColumnID{0}; column_id < column_count; ++column_id) {
+        const auto segment = chunk->get_segment(column_id);
+        auto copy = lockable_segment_manager.store(anticaching::SegmentID(table_name, chunk_id, column_id, table->column_name(column_id)), *segment);
+        chunk->replace_segment(column_id, copy);
+      }
+    }
+  }
+}
+
+void apply_locking(const std::string& filename, anticaching::LockableSegmentManager& lockable_segment_manager, bool unlock) {
   std::ifstream config_file(filename);
   nlohmann::json json_config;
   config_file >> json_config;
   const auto type = json_config.value("type", "locked");
-  const size_t size = json_config.value("size", 0);
-
-  anticaching::LockableMemoryResource* lockable_memory_resource = nullptr;
-
-  if (type == "locked") {
-    lockable_memory_resource = new anticaching::LockableMemoryResource(size);
-  }
 
   for (const auto& memory_segment: json_config["memory_segments"].items()) {
-    const uint32_t chunk_id = memory_segment.value()["chunk_id"];
+    const ChunkID chunk_id = ChunkID{memory_segment.value()["chunk_id"]};
     const std::string table_name = memory_segment.value()["table_name"];
     const std::string column_name = memory_segment.value()["column_name"];
-    // hier segmente auslesen und abhängig vom typ entsprechend verarbeiten.
 
-    // 1. segment holen
     auto table = Hyrise::get().storage_manager.get_table(table_name);
-    auto chunk = table->get_chunk(ChunkID{chunk_id});
     const auto column_id = table->column_id_by_name(column_name);
-    const auto segment = chunk->get_segment(column_id);
+    const auto segment_id = anticaching::SegmentID{table_name, chunk_id, column_id, column_name};
 
-    // 2. Direkt in die memory resource. Dafür muss ich aber die gesamntmenge an speicher kennnen.
-    // replace in chunk.
-    auto copy = segment->copy_using_allocator(lockable_memory_resource);
-    chunk->replace_segment(column_id, copy);
-  }
-
-  if (type == "locked") {
-    lockable_memory_resource->lock();
+    if (unlock)
+      lockable_segment_manager.unlock(segment_id);
+    else
+      lockable_segment_manager.lock(segment_id);
   }
 }
 
@@ -102,10 +104,12 @@ int main(int argc, char* argv[]) {
     ("use_prepared_statements", "Use prepared statements instead of random SQL strings", cxxopts::value<bool>()->default_value("false"))
     ("enable_breakpoints", "Break at breakpoints", cxxopts::value<bool>()->default_value("false"))
     ("mlockall", "Call mlockall before query start", cxxopts::value<bool>()->default_value("false"))
+    ("init_lockable_segment_manager", "Move all segments to lockable segment manager", cxxopts::value<bool>()->default_value("false"))
     ("path_to_memory_log", "Path to memory log", cxxopts::value<std::string>()->default_value(""))
     ("path_to_access_statistics_log", "Path to access statistics log", cxxopts::value<std::string>()->default_value(""))
     ("memory_to_lock", "Block of memory to reserve. Not used for anything.", cxxopts::value<uint64_t>()->default_value("0"))
-    ("external_setup_file", "Path to external setup file", cxxopts::value<std::string>()->default_value("")); // NOLINT
+    ("unlock_segments", "Path to file", cxxopts::value<std::string>()->default_value(""))
+    ("lock_segments", "Path to file", cxxopts::value<std::string>()->default_value("")); // NOLINT
   // clang-format on
 
   std::shared_ptr<BenchmarkConfig> config;
@@ -118,14 +122,20 @@ int main(int argc, char* argv[]) {
 
   if (CLIConfigParser::print_help_if_requested(cli_options, cli_parse_result)) return 0;
 
-  const auto mlock_all = cli_parse_result["mlockall"].as<bool>();
   const auto enable_breakpoints = cli_parse_result["enable_breakpoints"].as<bool>();
   if (enable_breakpoints) break_point("After parsing command line args.");
 
+  const auto mlock_all = cli_parse_result["mlockall"].as<bool>();
+  const auto init_lockable_segment_manager = cli_parse_result["init_lockable_segment_manager"].as<bool>();
   const auto path_to_memory_log = cli_parse_result["path_to_memory_log"].as<std::string>();
   const auto path_to_access_statistics_log = cli_parse_result["path_to_access_statistics_log"].as<std::string>();
-  const auto external_setup_file = cli_parse_result["external_setup_file"].as<std::string>();
+  const auto unlock_segment_path = cli_parse_result["unlock_segments"].as<std::string>();
+  const auto lock_segment_path = cli_parse_result["lock_segments"].as<std::string>();
   const auto memory_to_lock = cli_parse_result["memory_to_lock"].as<uint64_t>();
+
+  if ((!lock_segment_path.empty() || !unlock_segment_path.empty()) && !init_lockable_segment_manager) {
+    Fail("lock_segment_path and unlock_segment_path must be used together with init_lockable_segment_manager");
+  }
 
   // spin up thread to measure memory consumption
   bool terminate_thread = false;
@@ -233,6 +243,36 @@ int main(int argc, char* argv[]) {
                             benchmark_runner->sqlite_wrapper);
     }
 
+    auto lockable_segment_manager = anticaching::LockableSegmentManager();
+    if (init_lockable_segment_manager) {
+      if (enable_breakpoints) break_point("Before initialize_lockable_segment_manager.");
+      initialize_lockable_segment_manager(lockable_segment_manager);
+      if (enable_breakpoints) break_point("After initialize_lockable_segment_manager.");
+    }
+
+    if (mlock_all) {
+      if (enable_breakpoints) break_point("Before mlockall");
+      if (mlockall(MCL_CURRENT)) {
+        std::cout << "mlockall failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+        exit(-1);
+      }
+      if (enable_breakpoints) break_point("After mlockall");
+    }
+
+    auto relocking_required = !unlock_segment_path.empty();
+    if (relocking_required) {
+      if (enable_breakpoints) break_point("Before unlocking segments");
+      apply_locking(unlock_segment_path, lockable_segment_manager, true);
+      if (enable_breakpoints) break_point("After unlocking segments");
+    }
+
+    relocking_required = !lock_segment_path.empty();
+    if (relocking_required) {
+      if (enable_breakpoints) break_point("Before locking segments");
+      apply_locking(lock_segment_path, lockable_segment_manager, false);
+      if (enable_breakpoints) break_point("After locking segments");
+    }
+
     if (memory_to_lock > 0) {
       if (enable_breakpoints) break_point("Before reserving " + std::to_string(memory_to_lock) + " bytes");
 
@@ -248,22 +288,6 @@ int main(int argc, char* argv[]) {
       }
 
       if (enable_breakpoints) break_point("After reserving " + std::to_string(memory_to_lock) + " bytes");
-    }
-
-    const auto external_configuration = !external_setup_file.empty();
-    if (external_configuration) {
-      if (enable_breakpoints) break_point("Before external preparation.");
-      external_setup(external_setup_file);
-      if (enable_breakpoints) break_point("After external preparation.");
-    }
-
-    if (mlock_all) {
-      if (enable_breakpoints) break_point("Before mlockall");
-      if (mlockall(MCL_CURRENT)) {
-        std::cout << "mlockall failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
-        exit(-1);
-      }
-      if (enable_breakpoints) break_point("After mlockall");
     }
 
     if (enable_breakpoints) break_point("benchmark_runner->run()");

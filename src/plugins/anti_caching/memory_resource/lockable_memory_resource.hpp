@@ -22,8 +22,9 @@ class LockableMemoryResource : private Noncopyable, public boost::container::pmr
   void lock();
   void unlock();
 
- private:
   static const uint16_t PAGE_SIZE = 4096;
+
+ private:
   size_t _size = 0;
   size_t _locked_size = 0;
   char* _memory_address = nullptr;
