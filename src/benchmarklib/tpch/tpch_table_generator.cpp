@@ -8,6 +8,7 @@ extern "C" {
 
 #include <filesystem>
 #include <utility>
+#include <sys/mman.h>
 
 #include "benchmark_config.hpp"
 #include "import_export/binary/binary_parser.hpp"
@@ -121,6 +122,9 @@ TPCHTableGenerator::TPCHTableGenerator(float scale_factor, const std::shared_ptr
     : AbstractTableGenerator(benchmark_config), _scale_factor(scale_factor) {}
 
 std::unordered_map<std::string, BenchmarkTableInfo> TPCHTableGenerator::generate() {
+  mlockall(MCL_CURRENT);
+  std::cout << "Pre generate: Press any key to continue..\n";
+  std::getchar();
   Assert(_scale_factor < 1.0f || std::round(_scale_factor) == _scale_factor,
          "Due to tpch_dbgen limitations, only scale factors less than one can have a fractional part.");
 
@@ -305,7 +309,9 @@ std::unordered_map<std::string, BenchmarkTableInfo> TPCHTableGenerator::generate
       table_info.binary_file_path = cache_directory + "/" + table_name + ".bin";  // NOLINT
     }
   }
-
+  mlockall(MCL_CURRENT);
+  std::cout << "Post generate: Press any key to continue..\n";
+  std::getchar();
   return table_info_by_name;
 }
 
