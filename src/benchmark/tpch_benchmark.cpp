@@ -28,18 +28,78 @@
 
 using namespace opossum;  // NOLINT
 
+class cgroup_info {
+ public:
+  size_t rss;
+  size_t hierarchical_memory_limit;
+  std::string cgroup;
 
-void break_point(const std::string& message) {
-  size_t allocated_at_start;
-  size_t size_of_size_t = sizeof(size_t);
+  cgroup_info(size_t rss, size_t hierarchical_memory_limit, const std::string& cgroup)
+      : rss{rss}, hierarchical_memory_limit{hierarchical_memory_limit}, cgroup{cgroup} {}
+
+  void refresh() {
+    const auto filename = "/sys/fs/cgroup/memory/" + cgroup + "/memory.stat";
+    std::ifstream file(filename);
+    if (file.is_open()) {
+      std::string line;
+      while (std::getline(file, line)) {
+        // look for "rss [0-9]+"
+        if (line.starts_with("rss ")) {
+          auto size_as_string = line.substr(4, line.length() - 4);
+          this->rss = std::strtoul(size_as_string.c_str(), nullptr, 10);
+        }
+
+        if (line.starts_with("hierarchical_memory_limit ")) {
+          auto size_as_string = line.substr(26, line.length() - 26);
+          this->hierarchical_memory_limit = std::strtoul(size_as_string.c_str(), nullptr, 10);
+        }
+      }
+      file.close();
+    }
+    else {
+      std::cout << "cgroup_info::load Opening " << filename << " failed.\n";
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  static cgroup_info from_cgroup(const std::string& cgroup) {
+    cgroup_info info = cgroup_info{0, 0, cgroup};
+    info.refresh();
+    return info;
+  }
+};
+
+class jemalloc_info {
+ public:
+  size_t allocated;
+  size_t resident;
+
+  jemalloc_info(size_t allocated, size_t resident)
+      : allocated{allocated}, resident{resident} {}
+
+  void refresh(bool purge = true) {
+    size_t size_of_size_t = sizeof(size_t);
+
+    if (purge) mallctl("arena.4096.purge", NULL, NULL, NULL, 0);
+
+    mallctl("epoch", nullptr, nullptr, &this->allocated, size_of_size_t);
+
+    mallctl("stats.allocated", &this->allocated, &size_of_size_t, nullptr, 0);
+    mallctl("stats.resident", &this->resident, &size_of_size_t, nullptr, 0);
+  }
+
+  static jemalloc_info get(bool purge = true) {
+    auto jemalloc_data = jemalloc_info(0, 0);
+    jemalloc_data.refresh(purge);
+    return jemalloc_data;
+  }
+};
+
+void breakpoint(const std::string& message) {
+  const auto info = jemalloc_info::get();
   std::cout << message << "\n";
-
-  mallctl("arena.4096.purge", NULL, NULL, NULL, 0);
-  mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
-  mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
-  std::cout << "stats.allocated=" << allocated_at_start << '\n';
-  mallctl("stats.resident", &allocated_at_start, &size_of_size_t, nullptr, 0);
-  std::cout << "stats.resident=" << allocated_at_start << '\n';
+  std::cout << "stats.allocated=" << info.allocated << '\n';
+  std::cout << "stats.resident=" << info.resident << '\n';
   std::cout << "Press ENTER to continue...\n";
   std::getchar();
 }
@@ -81,6 +141,56 @@ void apply_locking(const std::string& filename, anticaching::LockableSegmentMana
   }
 }
 
+void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
+  auto jemalloc_data = jemalloc_info::get();
+
+
+  auto lock_block_size = 512ul * 1024;
+  const auto extra_free_space = jemalloc_data.resident - jemalloc_data.allocated;
+//  for (auto i = 0ul; i < extra_free_space;  i+=lock_block_size) {
+//    char* locked_memory = (char*)malloc(lock_block_size);
+//    if (mlock(locked_memory, lock_block_size)) {
+//      std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+//      exit(-1);
+//    }
+//    mallctl("arena.4096.purge", NULL, NULL, NULL, 0);
+//  }
+
+  auto cgroup_data = cgroup_info::from_cgroup(cgroup);
+  const auto space_to_lock =
+      cgroup_data.hierarchical_memory_limit - cgroup_data.rss - free_memory_limit;
+
+  std::cout << "Imposing free memory limit:"
+            << "\nfree_memory_limit = " << free_memory_limit
+            << "\nstats.allocated = " << jemalloc_data.allocated
+            << "\nstats.resident = " << jemalloc_data.resident
+            << "\ncgroup.rss = " << cgroup_data.rss
+            << "\ncgroup.hierarchical_memory_limit = " << cgroup_data.hierarchical_memory_limit
+            << "\nextra_free_space = " << extra_free_space
+            << "\nspace_to_lock = " << space_to_lock << "\n";
+
+    while(cgroup_data.rss + free_memory_limit < cgroup_data.hierarchical_memory_limit) {
+      char* locked_memory = (char*)malloc(lock_block_size);
+      if (mlock(locked_memory, lock_block_size)) {
+        std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+        exit(-1);
+      }
+      jemalloc_data.refresh();
+      cgroup_data.refresh();
+    }
+
+
+//  for (auto i = 0ul; i < space_to_lock;  i+=lock_block_size) {
+//    char* locked_memory = (char*)malloc(lock_block_size);
+//    if (mlock(locked_memory, lock_block_size)) {
+//      std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+//      exit(-1);
+//    }
+//    mallctl("arena.4096.purge", NULL, NULL, NULL, 0);
+//  }
+
+}
+
 /**
  * This benchmark measures Hyrise's performance executing the TPC-H *queries*, it doesn't (yet) support running the
  * TPC-H *benchmark* exactly as it is specified.
@@ -108,6 +218,9 @@ int main(int argc, char* argv[]) {
     ("path_to_memory_log", "Path to memory log", cxxopts::value<std::string>()->default_value(""))
     ("path_to_access_statistics_log", "Path to access statistics log", cxxopts::value<std::string>()->default_value(""))
     ("memory_to_lock", "Block of memory to reserve. Not used for anything.", cxxopts::value<uint64_t>()->default_value("0"))
+    ("cgroup", "Name of cgroup restricting total memory", cxxopts::value<std::string>()->default_value(""))
+    ("free_memory_limit", "Free memory, that should be available for executing the TPCH Benchmark."
+     "Must be used together with a cgroup", cxxopts::value<uint64_t>()->default_value("0"))
     ("unlock_segments", "Path to file", cxxopts::value<std::string>()->default_value(""))
     ("lock_segments", "Path to file", cxxopts::value<std::string>()->default_value("")); // NOLINT
   // clang-format on
@@ -123,7 +236,7 @@ int main(int argc, char* argv[]) {
   if (CLIConfigParser::print_help_if_requested(cli_options, cli_parse_result)) return 0;
 
   const auto enable_breakpoints = cli_parse_result["enable_breakpoints"].as<bool>();
-  if (enable_breakpoints) break_point("After parsing command line args.");
+  if (enable_breakpoints) breakpoint("After parsing command line args.");
 
   const auto mlock_all = cli_parse_result["mlockall"].as<bool>();
   const auto init_lockable_segment_manager = cli_parse_result["init_lockable_segment_manager"].as<bool>();
@@ -132,9 +245,15 @@ int main(int argc, char* argv[]) {
   const auto unlock_segment_path = cli_parse_result["unlock_segments"].as<std::string>();
   const auto lock_segment_path = cli_parse_result["lock_segments"].as<std::string>();
   const auto memory_to_lock = cli_parse_result["memory_to_lock"].as<uint64_t>();
+  const auto cgroup = cli_parse_result["cgroup"].as<std::string>();
+  const auto free_memory_limit = cli_parse_result["free_memory_limit"].as<uint64_t>();
 
   if ((!lock_segment_path.empty() || !unlock_segment_path.empty()) && !init_lockable_segment_manager) {
     Fail("lock_segment_path and unlock_segment_path must be used together with init_lockable_segment_manager");
+  }
+
+  if (free_memory_limit > 0 && cgroup.empty()) {
+    Fail("If a free memory limit is imposed a cgroup name must be given.");
   }
 
   // spin up thread to measure memory consumption
@@ -143,15 +262,11 @@ int main(int argc, char* argv[]) {
     if (path_to_memory_log.empty())
       return;
     std::ofstream output_file{path_to_memory_log};
-    size_t allocated_at_start;
-    size_t size_of_size_t = sizeof(size_t);
+    jemalloc_info jemalloc_data{0, 0};
     while(!terminate_thread) {
-      mallctl("arena.4096.purge", NULL, NULL, NULL, 0);
-      mallctl("epoch", nullptr, nullptr, &allocated_at_start, size_of_size_t);
-      mallctl("stats.allocated", &allocated_at_start, &size_of_size_t, nullptr, 0);
-      output_file << allocated_at_start;
-      mallctl("stats.resident", &allocated_at_start, &size_of_size_t, nullptr, 0);
-      output_file << "," << allocated_at_start << "\n";
+      jemalloc_data.refresh();
+      output_file << jemalloc_data.allocated;
+      output_file << "," << jemalloc_data.resident << "\n";
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 
@@ -245,36 +360,28 @@ int main(int argc, char* argv[]) {
 
     auto lockable_segment_manager = anticaching::LockableSegmentManager();
     if (init_lockable_segment_manager) {
-      if (enable_breakpoints) break_point("Before initialize_lockable_segment_manager.");
+      if (enable_breakpoints) breakpoint("Before initialize_lockable_segment_manager.");
       initialize_lockable_segment_manager(lockable_segment_manager);
-      if (enable_breakpoints) break_point("After initialize_lockable_segment_manager.");
+      if (enable_breakpoints) breakpoint("After initialize_lockable_segment_manager.");
     }
 
     if (mlock_all) {
-      if (enable_breakpoints) break_point("Before mlockall");
+      if (enable_breakpoints) breakpoint("Before mlockall");
       if (mlockall(MCL_CURRENT)) {
         std::cout << "mlockall failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
         exit(-1);
       }
-      if (enable_breakpoints) break_point("After mlockall");
+      if (enable_breakpoints) breakpoint("After mlockall");
     }
 
-    auto relocking_required = !lock_segment_path.empty();
-    if (relocking_required) {
-      if (enable_breakpoints) break_point("Before locking segments");
-      apply_locking(lock_segment_path, lockable_segment_manager, false);
-      if (enable_breakpoints) break_point("After locking segments");
-    }
-
-    relocking_required = !unlock_segment_path.empty();
-    if (relocking_required) {
-      if (enable_breakpoints) break_point("Before unlocking segments");
-      apply_locking(unlock_segment_path, lockable_segment_manager, true);
-      if (enable_breakpoints) break_point("After unlocking segments");
+    if (free_memory_limit > 0) {
+      if (enable_breakpoints) breakpoint("Before limit free memory");
+      limit_free_memory(free_memory_limit, cgroup);
+      if (enable_breakpoints) breakpoint("After limit free memory");
     }
 
     if (memory_to_lock > 0) {
-      if (enable_breakpoints) break_point("Before reserving " + std::to_string(memory_to_lock) + " bytes");
+      if (enable_breakpoints) breakpoint("Before reserving " + std::to_string(memory_to_lock) + " bytes");
 
       auto* locked_memory = malloc(memory_to_lock);
       if (!locked_memory) {
@@ -287,12 +394,26 @@ int main(int argc, char* argv[]) {
         exit(-1);
       }
 
-      if (enable_breakpoints) break_point("After reserving " + std::to_string(memory_to_lock) + " bytes");
+      if (enable_breakpoints) breakpoint("After reserving " + std::to_string(memory_to_lock) + " bytes");
     }
 
-    if (enable_breakpoints) break_point("benchmark_runner->run()");
+    auto relocking_required = !lock_segment_path.empty();
+    if (relocking_required) {
+      if (enable_breakpoints) breakpoint("Before locking segments");
+      apply_locking(lock_segment_path, lockable_segment_manager, false);
+      if (enable_breakpoints) breakpoint("After locking segments");
+    }
+
+    relocking_required = !unlock_segment_path.empty();
+    if (relocking_required) {
+      if (enable_breakpoints) breakpoint("Before unlocking segments");
+      apply_locking(unlock_segment_path, lockable_segment_manager, true);
+      if (enable_breakpoints) breakpoint("After unlocking segments");
+    }
+
+    if (enable_breakpoints) breakpoint("benchmark_runner->run()");
     benchmark_runner->run();
-    if (enable_breakpoints) break_point("After benchmark_runner->run()");
+    if (enable_breakpoints) breakpoint("After benchmark_runner->run()");
 
     if (!path_to_access_statistics_log.empty()) {
       anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
@@ -300,18 +421,18 @@ int main(int argc, char* argv[]) {
     }
 
     if (enable_breakpoints) {
-      break_point("Before benchmark cleanup");
+      breakpoint("Before benchmark cleanup");
     }
   }
 
   if (enable_breakpoints) {
     Hyrise::get().benchmark_runner.reset();
-    break_point("after benchmark cleanup");
+    breakpoint("after benchmark cleanup");
   }
 
   terminate_thread = true;
   logging.join();
 //  another_thread.join();
 
-  if (enable_breakpoints) break_point("Before leaving main().");
+  if (enable_breakpoints) breakpoint("Before leaving main().");
 }
