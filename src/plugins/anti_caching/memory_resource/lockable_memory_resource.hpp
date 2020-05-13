@@ -26,7 +26,6 @@ class LockableMemoryResource : private Noncopyable, public boost::container::pmr
 
  private:
   size_t _size = 0;
-  size_t _locked_size = 0;
   char* _memory_address = nullptr;
 
   void* do_allocate(size_t bytes, size_t alignment) override;

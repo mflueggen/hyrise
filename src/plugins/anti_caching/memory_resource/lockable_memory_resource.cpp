@@ -23,23 +23,20 @@ LockableMemoryResource::~LockableMemoryResource() {
 //  std::free(_memory_address);
 }
 
-void LockableMemoryResource::lock() {
-  // round current size up to page size and lock
-  _size += PAGE_SIZE - 1;
-  _size &= ~(PAGE_SIZE-1);
+size_t LockableMemoryResource::size() {
+  return _size;
+}
 
+void LockableMemoryResource::lock() {
   if (mlock(_memory_address, _size)) {
     Fail("mlock failed with: " + std::strerror(errno));
   }
-
-  _locked_size = _size;
 }
 
 void LockableMemoryResource::unlock() {
-  if (munlock(_memory_address, _locked_size)) {
+  if (munlock(_memory_address, _size)) {
     Fail("munlock failed with: " + std::strerror(errno));
   }
-  _locked_size = 0;
 }
 
 void* LockableMemoryResource::do_allocate(size_t bytes, size_t alignment) {
