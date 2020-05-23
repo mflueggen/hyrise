@@ -21,7 +21,7 @@ SegmentAccessCounter& SegmentAccessCounter::operator=(const SegmentAccessCounter
 
 void SegmentAccessCounter::_set_counters(const SegmentAccessCounter& counter) {
   for (auto counter_index = 0ul, size = _counters.size(); counter_index < size; ++counter_index) {
-    _counters[counter_index] = counter._counters[counter_index].load();
+    _counters[counter_index] = counter._counters[counter_index];
   }
 }
 
@@ -36,7 +36,7 @@ const SegmentAccessCounter::CounterType& SegmentAccessCounter::operator[](const 
 SegmentAccessCounter SegmentAccessCounter::operator-(const SegmentAccessCounter& other) const {
   SegmentAccessCounter difference;
   for (auto counter_index = 0ul, size = _counters.size(); counter_index < size; ++counter_index) {
-    difference._counters[counter_index] = _counters[counter_index].load() - other._counters[counter_index].load();
+    difference._counters[counter_index] = _counters[counter_index] - other._counters[counter_index];
   }
   return difference;
 }

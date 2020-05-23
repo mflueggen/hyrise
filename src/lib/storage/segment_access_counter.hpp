@@ -19,7 +19,7 @@ class SegmentAccessCounter {
   friend class SegmentAccessCounterTest;
 
  public:
-  using CounterType = std::atomic_uint64_t;
+  using CounterType = uint64_t;
 
   enum class AccessType {
     Point /* Single point access */,

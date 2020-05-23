@@ -254,7 +254,7 @@ void BenchmarkRunner::_benchmark_ordered() {
     // export needs to be done.
     const auto timestamp = get_timestamp();
     anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
-                                                             timestamp + "_" + name + "_access_statistics.csv");
+                                                             timestamp + "_" + name + "_access_statistics_non_atomic.csv");
     anticaching::AntiCachingPlugin::reset_access_statistics();
   }
 }
