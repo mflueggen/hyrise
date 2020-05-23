@@ -114,9 +114,6 @@ TEST_P(SegmentsUsingAllocatorsTest, CountersAfterMigration) {
   const auto allocator = PolymorphicAllocator<size_t>(&resource);
   const auto copied_segment = encoded_segment->copy_using_allocator(allocator);
 
-  const auto& copied_counters = copied_segment->access_counter;
-  EXPECT_EQ(copied_counters[SegmentAccessCounter::AccessType::Sequential], 300);
-  EXPECT_EQ(copied_counters[SegmentAccessCounter::AccessType::Random], 3);
 }
 
 inline std::string segments_using_allocator_test_formatter(

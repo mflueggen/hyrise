@@ -20,18 +20,8 @@
 #include "utils/sqlite_wrapper.hpp"
 #include "utils/timer.hpp"
 #include "version.hpp"
-#include "../plugins/anti_caching/anti_caching_plugin.hpp"
 
 namespace opossum {
-
-std::string get_timestamp() {
-  const auto timestamp = std::time(nullptr);
-  const auto local_time = std::localtime(&timestamp);
-  std::stringstream ss;
-  ss << std::put_time(local_time, "%Y%m%d_%H%M%S");
-  const auto timestamp_as_string = ss.str();
-  return timestamp_as_string;
-}
 
 BenchmarkRunner::BenchmarkRunner(const BenchmarkConfig& config,
                                  std::unique_ptr<AbstractBenchmarkItemRunner> benchmark_item_runner,
@@ -150,7 +140,6 @@ void BenchmarkRunner::run() {
 }
 
 void BenchmarkRunner::_benchmark_shuffled() {
-  Hyrise::get().plugin_manager.load_plugin("lib/libAntiCachingPlugin.so");
   auto item_ids = _benchmark_item_runner->items();
 
   if (const auto& weights = _benchmark_item_runner->weights(); !weights.empty()) {
@@ -206,7 +195,6 @@ void BenchmarkRunner::_benchmark_shuffled() {
 }
 
 void BenchmarkRunner::_benchmark_ordered() {
-  Hyrise::get().plugin_manager.load_plugin("lib/libAntiCachingPlugin.so");
   for (const auto& item_id : _benchmark_item_runner->items()) {
     _warmup(item_id);
 
@@ -251,11 +239,6 @@ void BenchmarkRunner::_benchmark_ordered() {
     // Wait for the rest of the tasks that didn't make it in time - they will not count toward the results
     Hyrise::get().scheduler()->wait_for_all_tasks();
     Assert(_currently_running_clients == 0, "All runs must be finished at this point");
-    // export needs to be done.
-    const auto timestamp = get_timestamp();
-    anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
-                                                             timestamp + "_" + name + "_access_statistics_non_atomic.csv");
-    anticaching::AntiCachingPlugin::reset_access_statistics();
   }
 }
 

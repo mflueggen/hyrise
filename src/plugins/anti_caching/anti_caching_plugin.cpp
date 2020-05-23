@@ -148,11 +148,6 @@ std::vector<SegmentInfo> AntiCachingPlugin::_fetch_current_statistics() {
       else {
         Fail("unsupported segment type");
       }
-      access_statistics.emplace_back(segment_id_segment_ptr_pair.first,
-                                     segment->memory_usage(MemoryUsageCalculationMode::Full),
-                                     segment->size(),
-                                     segment_type,
-                                     segment->access_counter);
     });
   }
   return access_statistics;
@@ -235,9 +230,6 @@ AntiCachingPlugin::_select_segment_information_for_value_computation(
   for (const auto& segment_info : current) {
     const auto& prev_segment_info = segment_infos.find(segment_info.segment_id);
     if (prev_segment_info != segment_infos.cend()) {
-      return_vector.emplace_back(segment_info.segment_id, segment_info.memory_usage, segment_info.size,
-                                 segment_info.type,
-                                 segment_info.access_counter - prev_segment_info->second.access_counter);
     } else {
       return_vector.push_back(segment_info);
     }
@@ -349,10 +341,6 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
         // TODO: This is just for logging purposes
         auto segment_size = segment_ptr->memory_usage(MemoryUsageCalculationMode::Full);
         _evicted_segments.erase(evicted_segment);
-        _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d, size: %d) moved to memory.") %
-                   segment_id.table_name % segment_id.column_name %
-                   segment_id.chunk_id % _sum(segment_ptr->access_counter) %
-                   segment_size).str());
         bytes_restored += segment_size;
       }
     } else {
@@ -364,7 +352,6 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
         auto persisted_segment_it = _persisted_segments.find(segment_id);
         if (persisted_segment_it != _persisted_segments.cend()) {
           copy_of_segment = (*persisted_segment_it).second;
-          copy_of_segment->access_counter = segment_ptr->access_counter;
         } else {
           copy_of_segment = _segment_manager->store(segment_id, *segment_ptr);
 
@@ -389,10 +376,6 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
 
         auto segment_size = segment_ptr->memory_usage(MemoryUsageCalculationMode::Full);
         _evicted_segments.insert(segment_id);
-        _log_line((boost::format("%s.%s (chunk_id: %d, access_count: %d, size: %d) evicted.") %
-                   segment_id.table_name % segment_id.column_name %
-                   segment_id.chunk_id % _sum(segment_ptr->access_counter) %
-                   segment_size).str());
         bytes_evicted += segment_size;
       }
       // an dieser Stelle dontneed setzen.
@@ -412,10 +395,6 @@ void AntiCachingPlugin::_swap_segments(const std::vector<SegmentID>& in_memory_s
 }
 
 void AntiCachingPlugin::reset_access_statistics() {
-  _for_all_segments(Hyrise::get().storage_manager.tables(), true,
-                    [](SegmentID segment_id, std::shared_ptr<BaseSegment> segment_ptr) {
-                      segment_ptr->access_counter = {};
-                    });
 }
 
 void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta_data,
@@ -450,10 +429,6 @@ void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta
                   << segment_info.memory_usage << '\n';
         segment_id_entry_id_map[segment_info.segment_id] = entry_id;
       }
-      output_file << entry_id << ','
-                  << std::chrono::duration_cast<std::chrono::seconds>(elapsed_time).count() << ','
-                  << segment_info.in_memory << ','
-                  << segment_info.access_counter.to_string() << '\n';
     }
   }
 
@@ -471,24 +446,6 @@ void AntiCachingPlugin::export_access_statistics(const std::map<std::string, std
   }
   output_file << '\n';
 
-  for (const auto&[table_name, table_ptr] : Hyrise::get().storage_manager.tables()) {
-    for (auto chunk_id = ChunkID{0}, chunk_count = table_ptr->chunk_count(); chunk_id < chunk_count; ++chunk_id) {
-      const auto chunk_ptr = table_ptr->get_chunk(chunk_id);
-      for (auto column_id = ColumnID{0}, column_count = static_cast<ColumnID>(chunk_ptr->column_count());
-           column_id < column_count; ++column_id) {
-        const auto& column_name = table_ptr->column_name(column_id);
-        const SegmentID segment_id{table_name, chunk_id, column_id, column_name};
-        const auto segment_ptr = chunk_ptr->get_segment(column_id);
-        output_file << segment_id.table_name << ','
-                    << segment_id.column_name << ','
-                    << segment_id.chunk_id << ','
-                    << segment_ptr->size() << ','
-                    << segment_ptr->memory_usage(MemoryUsageCalculationMode::Full) << ','
-                    << chunk_ptr->is_mutable() << ','
-                    << segment_ptr->access_counter.to_string() << '\n';
-      }
-    }
-  }
   output_file.close();
 }
 

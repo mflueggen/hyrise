@@ -118,19 +118,6 @@ TEST_F(SegmentAccessorTest, TestReferenceSegmentToDictionarySegmentString) {
 }
 
 TEST_F(SegmentAccessorTest, TestSegmentAccessCounterIncrementing) {
-  const auto& access_counter = val_seg_int->access_counter;
-  EXPECT_EQ(access_counter[SegmentAccessCounter::AccessType::Random], 0ul);
-
-  // Create segment accessor in a new scope to ensure its destructor, which writes the access counters, is called.
-  {
-    auto val_seg_int_base_accessor = create_segment_accessor<int>(val_seg_int);
-
-    EXPECT_EQ(val_seg_int_base_accessor->access(ChunkOffset{0}), 4);
-    EXPECT_EQ(val_seg_int_base_accessor->access(ChunkOffset{1}), 6);
-    EXPECT_EQ(val_seg_int_base_accessor->access(ChunkOffset{2}), 3);
-  }
-
-  EXPECT_EQ(access_counter[SegmentAccessCounter::AccessType::Random], 3ul);
 }
 
 }  // namespace opossum

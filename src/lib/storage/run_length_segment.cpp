@@ -58,8 +58,6 @@ std::shared_ptr<BaseSegment> RunLengthSegment<T>::copy_using_allocator(
 
   auto copy = std::make_shared<RunLengthSegment<T>>(new_values, new_null_values, new_end_positions);
 
-  copy->access_counter = access_counter;
-
   return copy;
 }
 

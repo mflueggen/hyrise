@@ -81,6 +81,5 @@ target_link_libraries(
     hyrise
     tpch_dbgen
     tpcds_dbgen
-    AntiCachingPlugin
 )
 

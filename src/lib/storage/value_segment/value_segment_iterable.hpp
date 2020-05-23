@@ -18,7 +18,6 @@ class ValueSegmentIterable : public PointAccessibleSegmentIterable<ValueSegmentI
 
   template <typename Functor>
   void _on_with_iterators(const Functor& functor) const {
-    _segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += _segment.size();
     if (_segment.is_nullable()) {
       auto begin = Iterator{_segment.values().cbegin(), _segment.values().cbegin(), _segment.null_values().cbegin()};
       auto end = Iterator{_segment.values().cbegin(), _segment.values().cend(), _segment.null_values().cend()};
@@ -32,7 +31,6 @@ class ValueSegmentIterable : public PointAccessibleSegmentIterable<ValueSegmentI
 
   template <typename Functor, typename PosListType>
   void _on_with_iterators(const std::shared_ptr<PosListType>& position_filter, const Functor& functor) const {
-    _segment.access_counter[SegmentAccessCounter::access_type(*position_filter)] += position_filter->size();
 
     using PosListIteratorType = std::decay_t<decltype(position_filter->cbegin())>;
 

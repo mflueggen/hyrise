@@ -442,8 +442,6 @@ std::shared_ptr<BaseSegment> LZ4Segment<T>::copy_using_allocator(const Polymorph
                                            _num_elements);
   }
 
-  copy->access_counter = access_counter;
-
   return copy;
 }
 
