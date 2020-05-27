@@ -116,7 +116,7 @@ class SingleChunkReferenceSegmentAccessor final : public AbstractSegmentAccessor
   }
 
   ~SingleChunkReferenceSegmentAccessor() {
-    ++_segment.access_counter[SegmentAccessCounter::AccessType::AccessorAccess] += _accesses;
+    _segment.access_counter[SegmentAccessCounter::AccessType::AccessorAccess] += _accesses;
   }
 
  protected:
