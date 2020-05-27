@@ -21,6 +21,7 @@ class LZ4SegmentIterable : public PointAccessibleSegmentIterable<LZ4SegmentItera
     using ValueIterator = typename std::vector<T>::const_iterator;
 
     auto decompressed_segment = _segment.decompress();
+    ++_segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
     _segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += decompressed_segment.size();
     if (_segment.null_values()) {
       auto begin =
@@ -44,6 +45,7 @@ class LZ4SegmentIterable : public PointAccessibleSegmentIterable<LZ4SegmentItera
   template <typename Functor, typename PosListType>
   void _on_with_iterators(const std::shared_ptr<PosListType>& position_filter, const Functor& functor) const {
     const auto position_filter_size = position_filter->size();
+    ++_segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
     _segment.access_counter[SegmentAccessCounter::access_type(*position_filter)] += position_filter_size;
 
     // vector storing the uncompressed values

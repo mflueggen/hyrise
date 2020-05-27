@@ -18,6 +18,7 @@ class RunLengthSegmentIterable : public PointAccessibleSegmentIterable<RunLength
 
   template <typename Functor>
   void _on_with_iterators(const Functor& functor) const {
+    ++_segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
     _segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += _segment.size();
     auto begin = Iterator{_segment.values(), _segment.null_values(), _segment.end_positions(),
                           _segment.end_positions()->cbegin(), ChunkOffset{0}};
@@ -29,6 +30,7 @@ class RunLengthSegmentIterable : public PointAccessibleSegmentIterable<RunLength
 
   template <typename Functor, typename PosListType>
   void _on_with_iterators(const std::shared_ptr<PosListType>& position_filter, const Functor& functor) const {
+    ++_segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
     _segment.access_counter[SegmentAccessCounter::access_type(*position_filter)] += position_filter->size();
 
     using PosListIteratorType = decltype(position_filter->cbegin());

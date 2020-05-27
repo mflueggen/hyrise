@@ -43,14 +43,16 @@ std::unique_ptr<AbstractSegmentAccessor<T>> create_segment_accessor(const std::s
 template <typename T, typename SegmentType>
 class SegmentAccessor final : public AbstractSegmentAccessor<T> {
  public:
-  explicit SegmentAccessor(const SegmentType& segment) : AbstractSegmentAccessor<T>{}, _segment{segment} {}
+  explicit SegmentAccessor(const SegmentType& segment) : AbstractSegmentAccessor<T>{}, _segment{segment} {
+    ++_segment.access_counter[SegmentAccessCounter::AccessType::AccessorCreate];
+  }
 
   const std::optional<T> access(ChunkOffset offset) const final {
     ++_accesses;
     return _segment.get_typed_value(offset);
   }
 
-  ~SegmentAccessor() { _segment.access_counter[SegmentAccessCounter::AccessType::Random] += _accesses; }
+  ~SegmentAccessor() { _segment.access_counter[SegmentAccessCounter::AccessType::AccessorAccess] += _accesses; }
 
  protected:
   mutable uint64_t _accesses{0};
@@ -67,7 +69,7 @@ template <typename T>
 class MultipleChunkReferenceSegmentAccessor final : public AbstractSegmentAccessor<T> {
  public:
   explicit MultipleChunkReferenceSegmentAccessor(const ReferenceSegment& segment)
-      : _segment{segment}, _table{segment.referenced_table()}, _accessors{1} {}
+      : _segment{segment}, _table{segment.referenced_table()}, _accessors{1} { }
 
   const std::optional<T> access(ChunkOffset offset) const final {
     const auto& row_id = (*_segment.pos_list())[offset];
@@ -103,7 +105,9 @@ class SingleChunkReferenceSegmentAccessor final : public AbstractSegmentAccessor
  public:
   explicit SingleChunkReferenceSegmentAccessor(const AbstractPosList& pos_list, const ChunkID chunk_id,
                                                const Segment& segment)
-      : _pos_list{pos_list}, _chunk_id(chunk_id), _segment(segment) {}
+      : _pos_list{pos_list}, _chunk_id(chunk_id), _segment(segment) {
+    ++_segment.access_counter[SegmentAccessCounter::AccessType::AccessorCreate];
+  }
 
   const std::optional<T> access(ChunkOffset offset) const final {
     ++_accesses;
@@ -112,7 +116,7 @@ class SingleChunkReferenceSegmentAccessor final : public AbstractSegmentAccessor
   }
 
   ~SingleChunkReferenceSegmentAccessor() {
-    _segment.access_counter[SegmentAccessCounter::AccessType::Random] += _accesses;
+    ++_segment.access_counter[SegmentAccessCounter::AccessType::AccessorAccess] += _accesses;
   }
 
  protected:

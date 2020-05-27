@@ -27,18 +27,25 @@ class SegmentAccessCounter {
     Monotonic /* 0, 0, 1, 2, 4, 8, 17 */,
     Random /* 0, 1, 0, 42 */,
     Dictionary /* Used to count accesses to the dictionary of the dictionary segment */,
+    IteratorCreate,
+    AccessorCreate,
+    AccessorAccess,
     Count /* Dummy entry to describe the number of elements in this enum class. */
   };
 
   static constexpr const std::array<AccessType, static_cast<size_t>(AccessType::Count)> AccessTypes{AccessType::Point,
-    AccessType::Sequential, AccessType::Monotonic, AccessType::Random, AccessType::Dictionary};
+    AccessType::Sequential, AccessType::Monotonic, AccessType::Random, AccessType::Dictionary,
+    AccessType::IteratorCreate, AccessType::AccessorCreate, AccessType::AccessorAccess};
 
   inline static const std::map<AccessType, const char*> access_type_string_mapping = {
     {AccessType::Point,      "Point"},
     {AccessType::Sequential, "Sequential"},
     {AccessType::Monotonic,  "Monotonic"},
     {AccessType::Random,     "Random"},
-    {AccessType::Dictionary, "Dictionary"}};
+    {AccessType::Dictionary, "Dictionary"},
+    {AccessType::IteratorCreate, "IteratorCreate"},
+    {AccessType::AccessorCreate, "AccessorCreate"},
+    {AccessType::AccessorAccess, "AccessorAccess"}};
 
   SegmentAccessCounter();
 
