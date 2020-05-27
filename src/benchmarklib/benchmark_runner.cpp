@@ -1,5 +1,6 @@
 #include "benchmark_runner.hpp"
 
+#include <ctime>
 #include <fstream>
 #include <random>
 
@@ -7,6 +8,7 @@
 #include <boost/range/adaptors.hpp>
 #include "cxxopts.hpp"
 
+#include "../plugins/anti_caching/anti_caching_plugin.hpp"
 #include "benchmark_config.hpp"
 #include "constant_mappings.hpp"
 #include "hyrise.hpp"
@@ -21,6 +23,15 @@
 #include "version.hpp"
 
 namespace opossum {
+
+std::string get_timestamp() {
+  const auto timestamp = std::time(nullptr);
+  const auto local_time = std::localtime(&timestamp);
+  std::stringstream ss;
+  ss << std::put_time(local_time, "%Y%m%d_%H%M%S");
+  const auto timestamp_as_string = ss.str();
+  return timestamp_as_string;
+}
 
 BenchmarkRunner::BenchmarkRunner(const BenchmarkConfig& config,
                                  std::unique_ptr<AbstractBenchmarkItemRunner> benchmark_item_runner,
@@ -240,6 +251,11 @@ void BenchmarkRunner::_benchmark_ordered() {
     // Wait for the rest of the tasks that didn't make it in time - they will not count toward the results
     Hyrise::get().scheduler()->wait_for_all_tasks();
     Assert(_currently_running_clients == 0, "All runs must be finished at this point");
+    // export needs to be done.
+    const auto timestamp = get_timestamp();
+    anticaching::AntiCachingPlugin::export_access_statistics(Hyrise::get().storage_manager.tables(),
+                                                             timestamp + "_" + name + "_access_statistics.csv");
+    anticaching::AntiCachingPlugin::reset_access_statistics();
   }
 }
 
