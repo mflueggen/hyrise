@@ -37,6 +37,10 @@ void LockableMemoryResource::unlock() {
   if (munlock(_memory_address, _size)) {
     Fail("munlock failed with: " + std::strerror(errno));
   }
+
+  if (madvise(_memory_address, _size, MADV_DONTNEED)) {
+    Fail("madvise failed with: " + std::strerror(errno));
+  }
 }
 
 void* LockableMemoryResource::do_allocate(size_t bytes, size_t alignment) {

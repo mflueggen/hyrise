@@ -471,7 +471,7 @@ void AntiCachingPlugin::export_access_statistics(const std::map<std::string, std
   }
   output_file << '\n';
 
-  for (const auto&[table_name, table_ptr] : Hyrise::get().storage_manager.tables()) {
+  for (const auto&[table_name, table_ptr] : tables) {
     for (auto chunk_id = ChunkID{0}, chunk_count = table_ptr->chunk_count(); chunk_id < chunk_count; ++chunk_id) {
       const auto chunk_ptr = table_ptr->get_chunk(chunk_id);
       for (auto column_id = ColumnID{0}, column_count = static_cast<ColumnID>(chunk_ptr->column_count());

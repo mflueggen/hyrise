@@ -134,10 +134,13 @@ void apply_locking(const std::string& filename, anticaching::LockableSegmentMana
     const auto column_id = table->column_id_by_name(column_name);
     const auto segment_id = anticaching::SegmentID{table_name, chunk_id, column_id, column_name};
 
-    if (unlock)
+    if (unlock) {
+      // apply dont need
       lockable_segment_manager.unlock(segment_id);
-    else
+    }
+    else {
       lockable_segment_manager.lock(segment_id);
+    }
   }
 }
 
