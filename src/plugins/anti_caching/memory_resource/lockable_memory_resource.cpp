@@ -12,7 +12,7 @@ namespace opossum::anticaching {
 LockableMemoryResource::LockableMemoryResource(size_t capacity)
   : capacity{capacity} {
   Assert(capacity % PAGE_SIZE == 0, "capacity must be divisible by page size.");
-  _memory_address = (char*)std::malloc(capacity);
+  _memory_address = (char*)std::aligned_alloc(4096, capacity);
   if (!_memory_address) {
     Fail("malloc failed with: " + std::strerror(errno));
   }
