@@ -150,7 +150,6 @@ void apply_locking(const std::string& filename, anticaching::LockableSegmentMana
 
 void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
   auto jemalloc_data = jemalloc_info::get();
-  auto lock_block_size = 512ul * 1024;
 
   auto cgroup_data = cgroup_info::from_cgroup(cgroup);
 
