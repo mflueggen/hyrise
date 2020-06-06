@@ -152,7 +152,7 @@ void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
   auto jemalloc_data = jemalloc_info::get();
   auto cgroup_data = cgroup_info::from_cgroup(cgroup);
 
-  const auto lock_block_size = 512ul*1024*1024;
+  const auto lock_block_size = 512ul*1024;
   auto memory_to_lock = cgroup_data.hierarchical_memory_limit - cgroup_data.unevictable - free_memory_limit;
 
   std::cout << "Imposing free memory limit:"
