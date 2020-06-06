@@ -150,9 +150,9 @@ void apply_locking(const std::string& filename, anticaching::LockableSegmentMana
 
 void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
   auto jemalloc_data = jemalloc_info::get();
-
   auto cgroup_data = cgroup_info::from_cgroup(cgroup);
 
+  const auto lock_block_size = 512ul*1024*1024;
   auto memory_to_lock = cgroup_data.hierarchical_memory_limit - cgroup_data.unevictable - free_memory_limit;
 
   std::cout << "Imposing free memory limit:"
@@ -164,21 +164,22 @@ void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
             << "\ncgroup.unevictable = " << cgroup_data.unevictable
             << "\nmemory_to_lock = " << memory_to_lock << "\n";
 
-  char* locked_memory = (char*)malloc(memory_to_lock);
-  if (mlock(locked_memory, memory_to_lock)) {
-    std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
-    exit(-1);
-  }
+  // this does not work...
+//  char* locked_memory = (char*)malloc(memory_to_lock);
+//  if (mlock(locked_memory, memory_to_lock)) {
+//    std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+//    exit(-1);
+//  }
 
-//    while(cgroup_data.hierarchical_memory_limit - cgroup_data.unevictable > free_memory_limit) {
-//      char* locked_memory = (char*)malloc(lock_block_size);
-//      if (mlock(locked_memory, lock_block_size)) {
-//        std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
-//        exit(-1);
-//      }
-//      //jemalloc_data.refresh();
-//      cgroup_data.refresh();
-//    }
+    while(cgroup_data.hierarchical_memory_limit - cgroup_data.unevictable > free_memory_limit) {
+      char* locked_memory = (char*)malloc(lock_block_size);
+      if (mlock(locked_memory, lock_block_size)) {
+        std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+        exit(-1);
+      }
+      //jemalloc_data.refresh();
+      cgroup_data.refresh();
+    }
 
 
 //  for (auto i = 0ul; i < space_to_lock;  i+=lock_block_size) {
