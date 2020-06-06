@@ -154,23 +154,32 @@ void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
 
   auto cgroup_data = cgroup_info::from_cgroup(cgroup);
 
+  auto memory_to_lock = cgroup_data.hierarchical_memory_limit - cgroup_data.unevictable - free_memory_limit;
+
   std::cout << "Imposing free memory limit:"
             << "\nfree_memory_limit = " << free_memory_limit
             << "\nstats.allocated = " << jemalloc_data.allocated
             << "\nstats.resident = " << jemalloc_data.resident
             << "\ncgroup.rss = " << cgroup_data.rss
             << "\ncgroup.hierarchical_memory_limit = " << cgroup_data.hierarchical_memory_limit
-            << "\ncgroup.unevictable = " << cgroup_data.unevictable << "\n";
+            << "\ncgroup.unevictable = " << cgroup_data.unevictable
+            << "\nmemory_to_lock = " << memory_to_lock << "\n";
 
-    while(cgroup_data.hierarchical_memory_limit - cgroup_data.unevictable > free_memory_limit) {
-      char* locked_memory = (char*)malloc(lock_block_size);
-      if (mlock(locked_memory, lock_block_size)) {
-        std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
-        exit(-1);
-      }
-      //jemalloc_data.refresh();
-      cgroup_data.refresh();
-    }
+  char* locked_memory = (char*)malloc(memory_to_lock);
+  if (mlock(locked_memory, memory_to_lock)) {
+    std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+    exit(-1);
+  }
+
+//    while(cgroup_data.hierarchical_memory_limit - cgroup_data.unevictable > free_memory_limit) {
+//      char* locked_memory = (char*)malloc(lock_block_size);
+//      if (mlock(locked_memory, lock_block_size)) {
+//        std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+//        exit(-1);
+//      }
+//      //jemalloc_data.refresh();
+//      cgroup_data.refresh();
+//    }
 
 
 //  for (auto i = 0ul; i < space_to_lock;  i+=lock_block_size) {
@@ -405,8 +414,6 @@ int main(int argc, char* argv[]) {
       apply_locking(lock_segment_path, lockable_segment_manager, false);
       if (enable_breakpoints) breakpoint("After locking segments");
     }
-
-
 
     if (enable_breakpoints) breakpoint("benchmark_runner->run()");
     benchmark_runner->run();
