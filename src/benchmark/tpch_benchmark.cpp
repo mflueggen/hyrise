@@ -177,7 +177,7 @@ void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
         std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
         exit(-1);
       }
-      //jemalloc_data.refresh();
+      jemalloc_data.refresh();
       cgroup_data.refresh();
     }
 
