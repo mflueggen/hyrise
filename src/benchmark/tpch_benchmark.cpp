@@ -32,10 +32,11 @@ class cgroup_info {
  public:
   size_t rss;
   size_t hierarchical_memory_limit;
+  size_t unevictable;
   std::string cgroup;
 
-  cgroup_info(size_t rss, size_t hierarchical_memory_limit, const std::string& cgroup)
-      : rss{rss}, hierarchical_memory_limit{hierarchical_memory_limit}, cgroup{cgroup} {}
+  cgroup_info(size_t rss, size_t hierarchical_memory_limit, size_t unevictable, const std::string& cgroup)
+      : rss{rss}, hierarchical_memory_limit{hierarchical_memory_limit}, unevictable{unevictable}, cgroup{cgroup} {}
 
   void refresh() {
     const auto filename = "/sys/fs/cgroup/memory/" + cgroup + "/memory.stat";
@@ -48,10 +49,13 @@ class cgroup_info {
           auto size_as_string = line.substr(4, line.length() - 4);
           this->rss = std::strtoul(size_as_string.c_str(), nullptr, 10);
         }
-
-        if (line.starts_with("hierarchical_memory_limit ")) {
+        else if (line.starts_with("hierarchical_memory_limit ")) {
           auto size_as_string = line.substr(26, line.length() - 26);
           this->hierarchical_memory_limit = std::strtoul(size_as_string.c_str(), nullptr, 10);
+        }
+        else if (line.starts_with("unevictable ")) {
+          auto size_as_string = line.substr(12, line.length() - 12);
+          this->unevictable = std::strtoul(size_as_string.c_str(), nullptr, 10);
         }
       }
       file.close();
@@ -63,7 +67,7 @@ class cgroup_info {
   }
 
   static cgroup_info from_cgroup(const std::string& cgroup) {
-    cgroup_info info = cgroup_info{0, 0, cgroup};
+    cgroup_info info = cgroup_info{0, 0, 0, cgroup};
     info.refresh();
     return info;
   }
@@ -146,22 +150,9 @@ void apply_locking(const std::string& filename, anticaching::LockableSegmentMana
 
 void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
   auto jemalloc_data = jemalloc_info::get();
-
-
   auto lock_block_size = 512ul * 1024;
-  const auto extra_free_space = jemalloc_data.resident - jemalloc_data.allocated;
-//  for (auto i = 0ul; i < extra_free_space;  i+=lock_block_size) {
-//    char* locked_memory = (char*)malloc(lock_block_size);
-//    if (mlock(locked_memory, lock_block_size)) {
-//      std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
-//      exit(-1);
-//    }
-//    mallctl("arena.4096.purge", NULL, NULL, NULL, 0);
-//  }
 
   auto cgroup_data = cgroup_info::from_cgroup(cgroup);
-  const auto space_to_lock =
-      cgroup_data.hierarchical_memory_limit - cgroup_data.rss - free_memory_limit;
 
   std::cout << "Imposing free memory limit:"
             << "\nfree_memory_limit = " << free_memory_limit
@@ -169,16 +160,15 @@ void limit_free_memory(size_t free_memory_limit, const std::string& cgroup) {
             << "\nstats.resident = " << jemalloc_data.resident
             << "\ncgroup.rss = " << cgroup_data.rss
             << "\ncgroup.hierarchical_memory_limit = " << cgroup_data.hierarchical_memory_limit
-            << "\nextra_free_space = " << extra_free_space
-            << "\nspace_to_lock = " << space_to_lock << "\n";
+            << "\ncgroup.unevictable = " << cgroup_data.unevictable << "\n";
 
-    while(cgroup_data.rss + free_memory_limit < cgroup_data.hierarchical_memory_limit) {
+    while(cgroup_data.hierarchical_memory_limit - cgroup_data.unevictable > free_memory_limit) {
       char* locked_memory = (char*)malloc(lock_block_size);
       if (mlock(locked_memory, lock_block_size)) {
         std::cout << "mlock failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
         exit(-1);
       }
-      jemalloc_data.refresh();
+      //jemalloc_data.refresh();
       cgroup_data.refresh();
     }
 
@@ -377,6 +367,14 @@ int main(int argc, char* argv[]) {
       if (enable_breakpoints) breakpoint("After mlockall");
     }
 
+    // unlocked memory should not add to the total memory
+    auto relocking_required = !unlock_segment_path.empty();
+    if (relocking_required) {
+      if (enable_breakpoints) breakpoint("Before unlocking segments");
+      apply_locking(unlock_segment_path, lockable_segment_manager, true);
+      if (enable_breakpoints) breakpoint("After unlocking segments");
+    }
+
     if (free_memory_limit > 0) {
       if (enable_breakpoints) breakpoint("Before limit free memory");
       limit_free_memory(free_memory_limit, cgroup);
@@ -400,19 +398,15 @@ int main(int argc, char* argv[]) {
       if (enable_breakpoints) breakpoint("After reserving " + std::to_string(memory_to_lock) + " bytes");
     }
 
-    auto relocking_required = !lock_segment_path.empty();
+    // lock: locked memory should reduce free mem.
+    relocking_required = !lock_segment_path.empty();
     if (relocking_required) {
       if (enable_breakpoints) breakpoint("Before locking segments");
       apply_locking(lock_segment_path, lockable_segment_manager, false);
       if (enable_breakpoints) breakpoint("After locking segments");
     }
 
-    relocking_required = !unlock_segment_path.empty();
-    if (relocking_required) {
-      if (enable_breakpoints) breakpoint("Before unlocking segments");
-      apply_locking(unlock_segment_path, lockable_segment_manager, true);
-      if (enable_breakpoints) breakpoint("After unlocking segments");
-    }
+
 
     if (enable_breakpoints) breakpoint("benchmark_runner->run()");
     benchmark_runner->run();
