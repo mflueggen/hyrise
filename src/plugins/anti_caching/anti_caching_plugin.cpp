@@ -70,7 +70,8 @@ AntiCachingConfig AntiCachingPlugin::_read_config(const std::string filename) {
 }
 
 void AntiCachingPlugin::_evaluate_statistics() {
-  _log_line("Evaluating statistics start");
+  // TODO: Disabled for possibility analysis
+//  _log_line("Evaluating statistics start");
 
   const auto timestamp = std::chrono::steady_clock::now();
 
@@ -79,16 +80,17 @@ void AntiCachingPlugin::_evaluate_statistics() {
     _access_statistics.emplace_back(timestamp, std::move(current_statistics));
   }
 
-  _evict_segments();
-  _log_line("Evaluating statistics end");
-
-  // TODO: Quickfix für Zwischepräsentation.
-  auto& access_statistics = _access_statistics.back().second;
-  for (auto& segment_info : access_statistics) {
-    if (_evicted_segments.contains(segment_info.segment_id)) {
-      segment_info.in_memory = false;
-    }
-  }
+  // DODO: Disabled for possibility analysis
+//  _evict_segments();
+//  _log_line("Evaluating statistics end");
+//
+//  // TODO: Quickfix für Zwischepräsentation.
+//  auto& access_statistics = _access_statistics.back().second;
+//  for (auto& segment_info : access_statistics) {
+//    if (_evicted_segments.contains(segment_info.segment_id)) {
+//      segment_info.in_memory = false;
+//    }
+//  }
 
 }
 
@@ -112,8 +114,9 @@ void AntiCachingPlugin::_for_all_segments(const std::map<std::string, std::share
 }
 
 std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> AntiCachingPlugin::_fetch_segments() {
+  // TODO: set mutable chunks back to falso after possibility analysis
   std::vector<std::pair<SegmentID, std::shared_ptr<BaseSegment>>> segments;
-  _for_all_segments(Hyrise::get().storage_manager.tables(), false,
+  _for_all_segments(Hyrise::get().storage_manager.tables(), true,
                     [&segments](SegmentID segment_id, std::shared_ptr<BaseSegment> segment_ptr) {
                       segments.emplace_back(std::move(segment_id), std::move(segment_ptr));
                     });
@@ -127,33 +130,40 @@ std::vector<SegmentInfo> AntiCachingPlugin::_fetch_current_statistics() {
   for (const auto& segment_id_segment_ptr_pair : segments) {
     auto segment_type = SegmentType::Value;
     const auto& segment = segment_id_segment_ptr_pair.second;
-    resolve_data_type(segment->data_type(), [&](const auto data_type_t) {
-      using ColumnDataType = typename decltype(data_type_t)::type;
-      if (std::dynamic_pointer_cast<ValueSegment<ColumnDataType>>(segment)) {
-        segment_type = SegmentType::Value;
-      }
-      else if (std::dynamic_pointer_cast<DictionarySegment<ColumnDataType>>(segment)) {
-        segment_type = SegmentType::Dictionary;
-      }
-      // TODO:
-//      else if (std::dynamic_pointer_cast<FrameOfReferenceSegment<ColumnDataType>>(segment)) {
-//        segment_type = SegmentType::FrameOfReference;
+    // TODO: Diabled for possibility analysis
+//    resolve_data_type(segment->data_type(), [&](const auto data_type_t) {
+//      using ColumnDataType = typename decltype(data_type_t)::type;
+//      if (std::dynamic_pointer_cast<ValueSegment<ColumnDataType>>(segment)) {
+//        segment_type = SegmentType::Value;
 //      }
-      else if (std::dynamic_pointer_cast<LZ4Segment<ColumnDataType>>(segment)) {
-        segment_type = SegmentType::LZ4;
-      }
-      else if (std::dynamic_pointer_cast<RunLengthSegment<ColumnDataType>>(segment)) {
-        segment_type = SegmentType::RunLength;
-      }
-      else {
-        Fail("unsupported segment type");
-      }
-      access_statistics.emplace_back(segment_id_segment_ptr_pair.first,
-                                     segment->memory_usage(MemoryUsageCalculationMode::Full),
-                                     segment->size(),
-                                     segment_type,
-                                     segment->access_counter);
-    });
+//      else if (std::dynamic_pointer_cast<DictionarySegment<ColumnDataType>>(segment)) {
+//        segment_type = SegmentType::Dictionary;
+//      }
+//      // TODO:
+////      else if (std::dynamic_pointer_cast<FrameOfReferenceSegment<ColumnDataType>>(segment)) {
+////        segment_type = SegmentType::FrameOfReference;
+////      }
+//      else if (std::dynamic_pointer_cast<LZ4Segment<ColumnDataType>>(segment)) {
+//        segment_type = SegmentType::LZ4;
+//      }
+//      else if (std::dynamic_pointer_cast<RunLengthSegment<ColumnDataType>>(segment)) {
+//        segment_type = SegmentType::RunLength;
+//      }
+//      else {
+//        Fail("unsupported segment type");
+//      }
+//      access_statistics.emplace_back(segment_id_segment_ptr_pair.first,
+//                                     segment->memory_usage(MemoryUsageCalculationMode::Full),
+//                                     segment->size(),
+//                                     segment_type,
+//                                     segment->access_counter);
+//    });
+    // TODO: Remove after possibility analysis
+    access_statistics.emplace_back(segment_id_segment_ptr_pair.first,
+                                   0,
+                                   segment->size(),
+                                   segment_type,
+                                   segment->access_counter);
   }
   return access_statistics;
 }
@@ -451,7 +461,7 @@ void AntiCachingPlugin::export_access_statistics(const std::string& path_to_meta
         segment_id_entry_id_map[segment_info.segment_id] = entry_id;
       }
       output_file << entry_id << ','
-                  << std::chrono::duration_cast<std::chrono::seconds>(elapsed_time).count() << ','
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_time).count() << ','
                   << segment_info.in_memory << ','
                   << segment_info.access_counter.to_string() << '\n';
     }
