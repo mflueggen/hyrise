@@ -11,7 +11,7 @@ class PersistentMemoryManager : private Noncopyable {
  public:
   static PersistentMemoryManager& get();
 
-  size_t create_pmemobj(size_t pool_size);
+//  size_t create_pmemobj(size_t pool_size);
   size_t create_mmap(size_t file_size);
 
   boost::container::pmr::memory_resource& get(size_t handle) const;
