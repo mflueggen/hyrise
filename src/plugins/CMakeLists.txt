@@ -35,9 +35,9 @@ add_plugin(NAME hyriseTestPlugin SRCS test_plugin.cpp test_plugin.hpp)
 add_plugin(NAME hyriseTestNonInstantiablePlugin SRCS non_instantiable_plugin.cpp)
 
 set(UMAP_ROOT "~/umap/bin")
-set(PMDK_DIR "~/pmdk/bin")
+#set(PMDK_DIR "~/pmdk/bin")
 find_library(UMAP_LIB umap HINTS ${UMAP_ROOT}/lib)
-find_library(PMEMOBJ_LIB pmemobj HINTS ${PMDK_DIR}/lib)
+#find_library(PMEMOBJ_LIB pmemobj HINTS ${PMDK_DIR}/lib)
 add_plugin(NAME AntiCachingPlugin
     SRCS
     anti_caching/anti_caching_config.cpp
@@ -58,25 +58,27 @@ add_plugin(NAME AntiCachingPlugin
     anti_caching/memory_resource/lockable_memory_resource.hpp
     anti_caching/memory_resource/mmap_memory_resource.cpp
     anti_caching/memory_resource/mmap_memory_resource.hpp
-    anti_caching/memory_resource/pmemobj_memory_resource.cpp
-    anti_caching/memory_resource/pmemobj_memory_resource.hpp
+    #anti_caching/memory_resource/pmemobj_memory_resource.cpp
+    #anti_caching/memory_resource/pmemobj_memory_resource.hpp
     anti_caching/segment_manager/abstract_segment_manager.cpp
     anti_caching/segment_manager/abstract_segment_manager.hpp
     anti_caching/segment_manager/lockable_segment_manager.cpp
     anti_caching/segment_manager/lockable_segment_manager.hpp
-    anti_caching/segment_manager/pmr_segment_manager.cpp
-    anti_caching/segment_manager/pmr_segment_manager.hpp
+    #anti_caching/segment_manager/pmr_segment_manager.cpp
+    #anti_caching/segment_manager/pmr_segment_manager.hpp
     anti_caching/segment_manager/umap_segment_manager.cpp
     anti_caching/segment_manager/umap_segment_manager.hpp
     LIBS
     ${UMAP_LIB}
-    ${PMEMOBJ_LIB})
+    #${PMEMOBJ_LIB}
+    )
 
 target_include_directories(AntiCachingPlugin PRIVATE
     ${UMAP_ROOT}/include
     ${UMAP_ROOT}/include/umap
     ${UMAP_ROOT}/include/umap/store
-    ${PMDK_DIR}/include)
+    #${PMDK_DIR}/include
+    )
 
 
 # We define TEST_PLUGIN_DIR to always load plugins from the correct directory for testing purposes

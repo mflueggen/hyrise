@@ -9,7 +9,6 @@
 #include "boost/format.hpp"
 #include "hyrise.hpp"
 #include "knapsack_solver.hpp"
-#include "persistent_memory_manager.hpp"
 #include "resolve_type.hpp"
 #include "segment_manager/umap_segment_manager.hpp"
 #include "segment_manager/pmr_segment_manager.hpp"
