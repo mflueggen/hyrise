@@ -438,11 +438,5 @@ int main(int argc, char* argv[]) {
   logging.join();
 //  another_thread.join();
 
-  Hyrise::get().benchmark_runner.reset();
-  const auto info = jemalloc_info::get();
-  std::cout << "Terminating" << "\n";
-  std::cout << "stats.allocated=" << info.allocated << '\n';
-  std::cout << "stats.resident=" << info.resident << '\n';
-
   if (enable_breakpoints) breakpoint("Before leaving main().");
 }
