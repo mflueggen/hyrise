@@ -438,5 +438,10 @@ int main(int argc, char* argv[]) {
   logging.join();
 //  another_thread.join();
 
+  const auto info = jemalloc_info::get();
+  std::cout << "Terminating" << "\n";
+  std::cout << "stats.allocated=" << info.allocated << '\n';
+  std::cout << "stats.resident=" << info.resident << '\n';
+
   if (enable_breakpoints) breakpoint("Before leaving main().");
 }
