@@ -439,4 +439,8 @@ int main(int argc, char* argv[]) {
 //  another_thread.join();
 
   if (enable_breakpoints) breakpoint("Before leaving main().");
+
+  if (munlockall()) {
+    std::cout << "munlockall failed with error '" << std::strerror(errno) << "' (" << errno << ")" << "\n";
+  }
 }
