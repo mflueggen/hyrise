@@ -126,6 +126,12 @@ std::shared_ptr<const Table> Projection::_on_execute() {
                     auto filtered_attribute_vector = pmr_vector<ValueID::base_type>(input_pos_list->size());
                     auto iterable = create_iterable_from_attribute_vector(dictionary_segment);
                     auto chunk_offset = ChunkOffset{0};
+                    ++dictionary_segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
+                    if (!input_pos_list)
+                      dictionary_segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += iterable._on_size();
+                    else
+                      dictionary_segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += input_pos_list->size();
+
                     iterable.with_iterators(input_pos_list, [&](auto it, auto end) {
                       while (it != end) {
                         filtered_attribute_vector[chunk_offset] = it->value();

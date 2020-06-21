@@ -100,6 +100,11 @@ void ColumnBetweenTableScanImpl::_scan_dictionary_segment(
    */
   // NOLINTNEXTLINE - cpplint is drunk
   if (lower_bound_value_id == ValueID{0} && upper_bound_value_id == INVALID_VALUE_ID) {
+    ++segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
+    if (!position_filter)
+      segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += attribute_vector_iterable._on_size();
+    else
+      segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += position_filter->size();
     attribute_vector_iterable.with_iterators(position_filter, [&](auto left_it, auto left_end) {
       static const auto always_true = [](const auto&) { return true; };
       _scan_with_iterators<true>(always_true, left_it, left_end, chunk_id, matches);
@@ -133,6 +138,11 @@ void ColumnBetweenTableScanImpl::_scan_dictionary_segment(
     return (position.value() - lower_bound_value_id) < value_id_diff;
   };
 
+  ++segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
+  if (!position_filter)
+    segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += attribute_vector_iterable._on_size();
+  else
+    segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += position_filter->size();
   attribute_vector_iterable.with_iterators(position_filter, [&](auto left_it, auto left_end) {
     // No need to check for NULL because NULL would be represented as a value ID outside of our range
     _scan_with_iterators<false>(comparator, left_it, left_end, chunk_id, matches);

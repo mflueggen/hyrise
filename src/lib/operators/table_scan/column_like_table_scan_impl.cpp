@@ -88,6 +88,11 @@ void ColumnLikeTableScanImpl::_scan_dictionary_segment(
 
   // LIKE matches all rows, but we still need to check for NULL
   if (match_count == dictionary_matches.size()) {
+    ++segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
+    if (!position_filter)
+      segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += attribute_vector_iterable._on_size();
+    else
+      segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += position_filter->size();
     attribute_vector_iterable.with_iterators(position_filter, [&](auto it, auto end) {
       static const auto always_true = [](const auto&) { return true; };
       _scan_with_iterators<true>(always_true, it, end, chunk_id, matches);
@@ -105,6 +110,11 @@ void ColumnLikeTableScanImpl::_scan_dictionary_segment(
     return dictionary_matches[position.value()];
   };
 
+  ++segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
+  if (!position_filter)
+    segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += attribute_vector_iterable._on_size();
+  else
+    segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += position_filter->size();
   attribute_vector_iterable.with_iterators(position_filter, [&](auto it, auto end) {
     _scan_with_iterators<true>(dictionary_lookup, it, end, chunk_id, matches);
   });

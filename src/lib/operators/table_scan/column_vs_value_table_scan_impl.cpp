@@ -107,6 +107,11 @@ void ColumnVsValueTableScanImpl::_scan_dictionary_segment(
   auto iterable = create_iterable_from_attribute_vector(segment);
 
   if (_value_matches_all(segment, search_value_id)) {
+    ++segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
+    if (!position_filter)
+      segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += iterable._on_size();
+    else
+      segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += position_filter->size();
     iterable.with_iterators(position_filter, [&](auto it, auto end) {
       static const auto always_true = [](const auto&) { return true; };
       // Matches all, so include all rows except those with NULLs in the result.
@@ -124,7 +129,11 @@ void ColumnVsValueTableScanImpl::_scan_dictionary_segment(
     auto comparator = [predicate_comparator, search_value_id](const auto& position) {
       return predicate_comparator(position.value(), search_value_id);
     };
-
+    ++segment.access_counter[SegmentAccessCounter::AccessType::IteratorCreate];
+    if (!position_filter)
+      segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += iterable._on_size();
+    else
+      segment.access_counter[SegmentAccessCounter::AccessType::Sequential] += position_filter->size();
     iterable.with_iterators(position_filter, [&](auto it, auto end) {
       // dictionary.size() represents a NULL in the AttributeVector. For some PredicateConditions, we can
       // avoid explicitly checking for it, since the condition (e.g., LessThan) would never return true for
